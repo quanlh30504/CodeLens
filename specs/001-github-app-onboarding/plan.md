@@ -19,7 +19,7 @@ Approach (details in [research.md](research.md)):
 
 ## Technical Context
 
-**Language/Version**: TypeScript (strict) on the current Node.js LTS, for both backend and frontend
+**Language/Version**: TypeScript (strict) on Node.js 22 LTS (`.nvmrc`), for both backend and frontend; pnpm 10 workspaces
 
 **Primary Dependencies**: NestJS (API, guards, validation, DI); Next.js App Router + React (web); Prisma (schema access and SQL migrations); BullMQ (job queue); Octokit libraries for GitHub App auth and webhook signature verification; pino (structured logging); zod for input schemas
 

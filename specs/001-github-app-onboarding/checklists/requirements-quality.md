@@ -132,13 +132,13 @@
 
 ## Final Analysis Follow-up (R1–R5)
 
-- [x] CHK081 Is SC-014 (only read-only, baseline-listed GitHub App permissions) backed by a verifiable condition and a task that checks it, rather than by documentation alone? [Measurability, Spec §SC-014, Tasks T026, T027] — Verified: startup permission check plus tests.
-- [x] CHK082 Are the permission values in the registration document, the startup allow-list and ADR-006 required to be identical? [Consistency, Spec §FR-032, §FR-039, Tasks T008, T009, T026]
+- [x] CHK081 Is SC-014 (only read-only, baseline-listed GitHub App permissions) backed by a verifiable condition and a task that checks it, rather than by documentation alone? [Measurability, Spec §SC-014, Tasks T027, T028] — Verified: startup permission check plus tests.
+- [x] CHK082 Are the permission values in the registration document, the startup allow-list and ADR-006 required to be identical? [Consistency, Spec §FR-032, §FR-039, Tasks T009, T010, T027]
 - [x] CHK083 Is every requirement-quality item either resolved in the spec or explicitly declared out of scope with an owner? [Completeness, Spec §Assumptions] — 0 open items remain.
-- [x] CHK084 Are the synchronization failure reason categories named identically in the spec (FR-041), data model, API contract and tasks? [Consistency, Spec §FR-041, Tasks T055]
+- [x] CHK084 Are the synchronization failure reason categories named identically in the spec (FR-041), data model, API contract and tasks? [Consistency, Spec §FR-041, Tasks T056]
 - [x] CHK085 Does the validation guide cover the permission matrix, repository transfer, setup timeout, role re-confirmation, startup permission refusal and sign-out? [Coverage, quickstart.md §A]
 - [x] CHK086 Does every implementation and test task that realizes a functional requirement or success criterion name it by ID? [Traceability, tasks.md]
-- [x] CHK087 Are the new requirements (sign-out, rejection-record retention, identical rejection responses, delivery identity) each covered by at least one test task? [Coverage, Spec §US1-6, §FR-028, §FR-029, Tasks T037, T062, T063]
+- [x] CHK087 Are the new requirements (sign-out, rejection-record retention, identical rejection responses, delivery identity) each covered by at least one test task? [Coverage, Spec §US1-6, §FR-028, §FR-029, Tasks T038, T063, T064]
 
 ## Notes
 
