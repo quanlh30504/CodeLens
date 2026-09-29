@@ -1,0 +1,30 @@
+# Dependencies and build output
+node_modules/
+dist/
+build/
+.next/
+coverage/
+*.tsbuildinfo
+
+# Environment and secrets (only deploy/env.example is committed)
+.env
+.env.*
+!deploy/env.example
+*.pem
+*.key
+*.p12
+*.pfx
+secrets/
+
+# Logs and OS/editor files
+*.log
+*.tmp
+*.swp
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+
+# Test artifacts
+playwright-report/
+test-results/
