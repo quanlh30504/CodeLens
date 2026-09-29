@@ -101,3 +101,14 @@ export async function installAndSync(
   });
   return { session, id };
 }
+
+/**
+ * Makes the signed-in user an OWNER of their organization, as a completed role verification
+ * against GitHub will (task T077). Until then tests set the outcome directly in the database.
+ */
+export async function makeOwner(world: World, session: SignedIn, verifiedMinutesAgo = 0): Promise<void> {
+  await world.infra.prisma.organizationMember.updateMany({
+    where: { userId: session.userId },
+    data: { role: 'OWNER', roleVerifiedAt: new Date(Date.now() - verifiedMinutesAgo * 60_000) },
+  });
+}

@@ -1,6 +1,6 @@
 import request from 'supertest';
 import { World, makeRepos, seedInstallation, startWorld } from './scenario';
-import { SignedIn, installAndSync, signInAs } from './support';
+import { SignedIn, installAndSync, makeOwner, signInAs } from './support';
 
 /** FR-020, SC-007, US6 scenarios 1, 2 and 4, and the permission matrix of FR-040 that exists so far. */
 describe('tenant isolation', () => {
@@ -120,6 +120,43 @@ describe('tenant isolation', () => {
       await get(`/api/installations/${alice.id}`, alice).expect(200);
       await request(server()).get('/api/installations/new').set('Cookie', alice.session.cookie).expect(302);
       await request(server()).get('/api/me/refresh-access').set('Cookie', alice.session.cookie).expect(302);
+    });
+  });
+
+  describe('permission matrix, management cells (spec FR-040)', () => {
+    const put = (who: { session: SignedIn } | null, id: string) => {
+      const req = request(server()).put(`/api/repositories/${id}/review-enabled`);
+      return (who ? req.set('Cookie', who.session.cookie).set('X-CSRF-Token', who.session.csrfToken) : req).send({ enabled: false });
+    };
+    const sync = (who: { session: SignedIn } | null, id: string) => {
+      const req = request(server()).post(`/api/installations/${id}/sync`);
+      return who ? req.set('Cookie', who.session.cookie).set('X-CSRF-Token', who.session.csrfToken) : req;
+    };
+
+    it('visitor: cannot enable, disable or re-run synchronization (401)', async () => {
+      await put(null, acmeRepoId).expect(401);
+      await sync(null, alice.id).expect(401);
+    });
+
+    it('signed-in non-member: cannot, and cannot tell the resource exists (404)', async () => {
+      const outsider = { session: await signInAs(world, 31) };
+      await put(outsider, acmeRepoId).expect(404);
+      await sync(outsider, alice.id).expect(404);
+    });
+
+    it('MEMBER: cannot change anything (403), and not in another organization either (404)', async () => {
+      await put(alice, acmeRepoId).expect(403);
+      await sync(alice, alice.id).expect(403);
+      await put(alice, globexRepoId).expect(404);
+      await sync(alice, bob.id).expect(404);
+    });
+
+    it('OWNER: can enable, disable and re-run synchronization in their own organization only', async () => {
+      await makeOwner(world, alice.session);
+      await put(alice, acmeRepoId).expect(200);
+      await sync(alice, alice.id).expect(202);
+      await put(alice, globexRepoId).expect(404);
+      await sync(alice, bob.id).expect(404);
     });
   });
 

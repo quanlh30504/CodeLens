@@ -1,10 +1,11 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { InstallationSetupStatus } from '@/components/installation-setup-status';
+import { RepositoryToggle } from '@/components/repository-toggle';
+import { SyncNowButton } from '@/components/sync-now-button';
 import {
   INSTALLATION_STATE_LABELS,
   Installation,
-  REPOSITORY_STATE_LABELS,
   Repository,
   limitWarning,
   syncFailureReason,
@@ -66,6 +67,8 @@ export default async function InstallationPage({ params, searchParams }: { param
         <p role="alert">The app was uninstalled on GitHub. This is kept for your records.</p>
       ) : null}
 
+      {installation.canManage && installation.status === 'ACTIVE' ? <SyncNowButton installationId={installation.id} /> : null}
+
       <h2>Repositories</h2>
       <form method="get">
         <input name="q" defaultValue={q ?? ''} placeholder="Search by name" aria-label="Search repositories" maxLength={100} />{' '}
@@ -104,7 +107,9 @@ export default async function InstallationPage({ params, searchParams }: { param
               <tr key={repository.id}>
                 <td>{repository.fullName}</td>
                 <td>{repository.private ? 'Private' : 'Public'}</td>
-                <td>{REPOSITORY_STATE_LABELS[repository.state]}</td>
+                <td>
+                  <RepositoryToggle repository={repository} canManage={installation.canManage && installation.status === 'ACTIVE'} />
+                </td>
               </tr>
             ))}
           </tbody>

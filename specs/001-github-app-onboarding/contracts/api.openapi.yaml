@@ -153,6 +153,12 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '403': { $ref: '#/components/responses/Forbidden' }
         '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The installation is not active on GitHub
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/RoleUnverifiable' }
   /repositories/{repositoryId}/review-enabled:
     put:
       summary: Enable or disable CodeLens review for a repository (OWNER only); idempotent
@@ -183,6 +189,7 @@ paths:
           content:
             application/json:
               schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/RoleUnverifiable' }
   /webhooks/github:
     post:
       summary: GitHub webhook receiver (see webhooks.md)
@@ -250,6 +257,11 @@ components:
           schema: { $ref: '#/components/schemas/Error' }
     NotFound:
       description: Resource does not exist or is outside the caller's organizations
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RoleUnverifiable:
+      description: GitHub could not confirm the caller's role (code ROLE_UNVERIFIABLE); nothing was changed and no stored role was trusted
       content:
         application/json:
           schema: { $ref: '#/components/schemas/Error' }
