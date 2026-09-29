@@ -59,13 +59,23 @@ paths:
         '401': { $ref: '#/components/responses/Unauthenticated' }
   /installations/callback:
     get:
-      summary: GitHub setup callback; links an installation the user is verified to access
+      summary: GitHub setup callback; links an installation only after GitHub confirms the user can access it
       parameters:
         - { name: installation_id, in: query, required: true, schema: { type: integer, format: int64 } }
         - { name: setup_action, in: query, schema: { type: string } }
         - { name: state, in: query, required: true, schema: { type: string } }
+        - name: code
+          in: query
+          required: false
+          description: |
+            GitHub user-authorization code, sent when the app is configured to request user
+            authorization during installation. When present it is exchanged for a short-lived
+            user credential used only to confirm the caller can access installation_id.
+            When absent the caller is sent through the sign-in authorization flow and returned
+            here before anything is linked.
+          schema: { type: string }
       responses:
-        '302': { description: Redirect to the installation page (may show setting-up state) }
+        '302': { description: Redirect to the installation page (may show setting-up state), or to GitHub authorization to confirm access when code is absent }
         '400': { $ref: '#/components/responses/InvalidState' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
         '404': { $ref: '#/components/responses/NotFound' }
@@ -254,12 +264,19 @@ components:
       description: Derived from accessibility and the review-enabled flag
     Installation:
       type: object
-      required: [id, status, syncStatus, organization, repositorySelection]
+      required: [id, status, syncStatus, displayState, organization, repositorySelection]
       properties:
         id: { type: string, format: uuid }
         status: { type: string, enum: [ACTIVE, SUSPENDED, REMOVED] }
         syncStatus: { type: string, enum: [PENDING, SYNCING, SYNCED, FAILED] }
-        syncErrorCode: { type: string, nullable: true }
+        syncErrorCode:
+          type: string
+          nullable: true
+          enum: [GITHUB_UNAVAILABLE, GITHUB_RATE_LIMITED, ACCESS_REVOKED, OTHER, REPOSITORY_LIMIT_EXCEEDED]
+        displayState:
+          type: string
+          enum: [SETTING_UP, ACTIVE, SYNC_FAILED, LIMIT_REACHED, SUSPENDED, REMOVED]
+          description: State shown to the user (spec FR-041); derivation in data-model.md
         repositorySelection: { type: string, enum: [ALL, SELECTED] }
         installedAt: { type: string, format: date-time }
         lastSyncedAt: { type: string, format: date-time, nullable: true }
@@ -271,7 +288,7 @@ components:
             id: { type: string, format: uuid }
             login: { type: string }
             accountType: { type: string, enum: [ORGANIZATION, USER] }
-        canManage: { type: boolean, description: True when the caller is OWNER }
+        canManage: { type: boolean, description: True when the caller is OWNER (spec FR-040); the management guard still requires a confirmation no older than 10 minutes }
     Repository:
       type: object
       required: [id, fullName, private, state]
@@ -281,7 +298,6 @@ components:
         defaultBranch: { type: string }
         private: { type: boolean }
         state: { $ref: '#/components/schemas/RepositoryState' }
-        syncConflict: { type: boolean }
         enabledAt: { type: string, format: date-time, nullable: true }
         lastSyncedAt: { type: string, format: date-time, nullable: true }
     SyncAccepted:

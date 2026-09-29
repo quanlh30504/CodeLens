@@ -19,8 +19,8 @@ Source of truth for the baseline: [docs/architecture/database-erd.md](../../docs
 The ERD already had `github_installations.status`, `account_type`, `suspended_at` and `repositories.status`. What was missing, and is now merged:
 
 1. **New table `webhook_deliveries`** (below).
-2. **`github_installations`** add: `repository_selection` (`ALL` | `SELECTED`), `sync_status` (`PENDING` | `SYNCING` | `SYNCED` | `FAILED`), `sync_error_code` (nullable, no free text from GitHub), `last_synced_at`, `removed_at`. Allowed `status` values: `ACTIVE`, `SUSPENDED`, `REMOVED`.
-3. **`repositories`** add: `review_enabled` (boolean, default false), `enabled_at`, `enabled_by_user_id` (nullable FK to `users`), `last_synced_at`, `sync_conflict` (boolean, default false). Allowed `status` values (GitHub access only): `ACCESSIBLE`, `INACCESSIBLE`. Keeping GitHub access separate from the CodeLens choice avoids overloading one column.
+2. **`github_installations`** add: `repository_selection` (`ALL` | `SELECTED`), `sync_status` (`PENDING` | `SYNCING` | `SYNCED` | `FAILED`), `sync_error_code` (nullable, no free text from GitHub; includes `REPOSITORY_LIMIT_EXCEEDED`, set with `sync_status = SYNCED` when more than 5,000 repositories exist and only the 5,000 lowest GitHub repository IDs are stored), `last_synced_at`, `removed_at`. Allowed `status` values: `ACTIVE`, `SUSPENDED`, `REMOVED`.
+3. **`repositories`** add: `review_enabled` (boolean, default false), `enabled_at`, `enabled_by_user_id` (nullable FK to `users`), `last_synced_at`, `sync_conflict` (boolean, default false; operator diagnostics only, never returned by the API). Allowed `status` values (GitHub access only): `ACCESSIBLE`, `INACCESSIBLE`. Keeping GitHub access separate from the CodeLens choice avoids overloading one column.
 4. **`audit_logs.action`** new values: `GITHUB_INSTALLATION_SUSPENDED`, `GITHUB_INSTALLATION_UNSUSPENDED`, `REPOSITORY_SYNC_FAILED` (in addition to `GITHUB_INSTALLATION_ADDED`, `GITHUB_INSTALLATION_REMOVED`, `REPOSITORY_ENABLED`, `REPOSITORY_DISABLED`).
 5. **`organization_members`** add: `role_verified_at` (timestamp; last time GitHub confirmed the role). Allowed `role` values for this feature: `OWNER`, `MEMBER`.
 6. **`organizations`** for personal accounts: stored as rows keyed by the GitHub account ID in `github_org_id`, with a `account_type` (`ORGANIZATION` | `USER`) column. This keeps the existing unique constraint valid.
@@ -71,9 +71,23 @@ ACCESSIBLE --owner enables--> review_enabled=true
 review_enabled=true --owner disables--> review_enabled=false
 ACCESSIBLE --no longer reported--> INACCESSIBLE, review_enabled=false
 INACCESSIBLE --reported again--> ACCESSIBLE, review_enabled=false (must be re-enabled)
+any --transferred, previous installation has no access (confirmed with GitHub)--> reassigned to the new organization and installation, ACCESSIBLE, review_enabled=false, enabled_at and enabled_by_user_id cleared
 ```
 
 Installation `REMOVED` sets all its repositories to `INACCESSIBLE` and `review_enabled=false`. A `SUSPENDED` installation keeps repository flags but the eligibility function returns false.
+
+## Display states (spec FR-041)
+
+| Shown to user | Derived from |
+|---------------|--------------|
+| Setting up | `status = ACTIVE`, `sync_status` in (`PENDING`, `SYNCING`) and `last_synced_at` is null |
+| Active | `status = ACTIVE`, `sync_status = SYNCED`, `sync_error_code` null (or a later `SYNCING`) |
+| Active – synchronization failed | `status = ACTIVE`, `sync_status = FAILED`; reason from `sync_error_code`: `GITHUB_UNAVAILABLE`, `GITHUB_RATE_LIMITED`, `ACCESS_REVOKED`, `OTHER` |
+| Active – repository limit reached | `status = ACTIVE`, `sync_status = SYNCED`, `sync_error_code = REPOSITORY_LIMIT_EXCEEDED` |
+| Suspended | `status = SUSPENDED` |
+| Removed | `status = REMOVED` |
+
+Repository: *Enabled* = `ACCESSIBLE` and `review_enabled`; *Disabled* = `ACCESSIBLE` and not `review_enabled`; *No longer accessible* = `INACCESSIBLE`.
 
 ## Eligibility rule
 
