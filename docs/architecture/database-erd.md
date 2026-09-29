@@ -74,6 +74,7 @@ erDiagram
     organizations {
         uuid id PK
         varchar github_org_id UK
+        varchar account_type
         varchar login
         varchar name
         varchar avatar_url
@@ -86,6 +87,7 @@ erDiagram
         uuid organization_id FK
         uuid user_id FK
         varchar role
+        timestamp role_verified_at
         timestamp created_at
         timestamp updated_at
     }
@@ -97,8 +99,13 @@ erDiagram
         varchar account_type
         varchar account_login
         varchar status
+        varchar repository_selection
+        varchar sync_status
+        varchar sync_error_code
+        timestamp last_synced_at
         timestamp installed_at
         timestamp suspended_at
+        timestamp removed_at
         timestamp created_at
         timestamp updated_at
     }
@@ -114,8 +121,26 @@ erDiagram
         varchar default_branch
         boolean private
         varchar status
+        boolean review_enabled
+        timestamp enabled_at
+        uuid enabled_by_user_id FK
+        boolean sync_conflict
+        timestamp last_synced_at
         timestamp created_at
         timestamp updated_at
+    }
+
+    webhook_deliveries {
+        uuid id PK
+        varchar delivery_guid UK
+        varchar event
+        varchar action
+        bigint github_installation_id
+        varchar payload_sha256
+        varchar status
+        varchar error_code
+        timestamp received_at
+        timestamp processed_at
     }
 
     repository_configs {
@@ -354,6 +379,8 @@ erDiagram
     github_installations ||--o{ repositories : grants_access
     organizations ||--o{ repositories : owns
 
+    users ||--o{ repositories : enabled_by
+
     repositories ||--o{ repository_configs : has
     repositories ||--o{ repository_config_versions : versions
 
@@ -422,6 +449,10 @@ Represents the GitHub organization or GitHub account that owns repositories.
 
 An organization is also the primary CodeLens tenant boundary.
 
+`account_type` is `ORGANIZATION` or `USER`. A personal GitHub account is stored as an
+organization row keyed by its GitHub account ID in `github_org_id`, so the unique
+constraint stays valid.
+
 ---
 
 ## organization_members
@@ -446,6 +477,9 @@ MEMBER
 
 The exact authorization model can evolve.
 
+`role_verified_at` records when GitHub last confirmed the role. Roles used by Feature 001
+are `OWNER` (GitHub organization owner, or the personal account holder) and `MEMBER`.
+
 ---
 
 # 4. GitHub Integration Domain
@@ -462,6 +496,14 @@ github_installation_id UNIQUE
 
 This is the security boundary between CodeLens and GitHub.
 
+`status` values: `ACTIVE`, `SUSPENDED`, `REMOVED` (terminal). A reinstall creates a new
+row, with a new GitHub installation ID, in the same organization.
+
+`repository_selection` is `ALL` or `SELECTED`, as reported by GitHub.
+
+`sync_status` values: `PENDING`, `SYNCING`, `SYNCED`, `FAILED`. `sync_error_code` holds a
+code only, never free text from GitHub.
+
 ---
 
 ## repositories
@@ -474,6 +516,17 @@ installation
 ```
 
 The repository record caches GitHub metadata.
+
+`status` describes GitHub access only: `ACCESSIBLE` or `INACCESSIBLE`. It is never set by
+a user.
+
+`review_enabled` is the CodeLens choice, default false. It is reset to false whenever the
+repository becomes inaccessible, so a repository that returns must be enabled again.
+A repository is eligible for review only when `status = ACCESSIBLE`, `review_enabled`
+is true and its installation `status = ACTIVE`.
+
+`sync_conflict` is true when a second installation also reports a repository still held
+by the first; the first holder keeps it.
 
 Do not assume the local DB is always the source of truth for GitHub state.
 
@@ -825,6 +878,14 @@ REPOSITORY_ENABLED
 REPOSITORY_DISABLED
 ```
 
+Feature 001 adds:
+
+```text
+GITHUB_INSTALLATION_SUSPENDED
+GITHUB_INSTALLATION_UNSUSPENDED
+REPOSITORY_SYNC_FAILED
+```
+
 Do not store secret values in audit logs.
 
 ---
@@ -865,6 +926,21 @@ organizations.github_org_id UNIQUE
 github_installations.github_installation_id UNIQUE
 
 repositories.github_repository_id UNIQUE
+```
+
+### Webhook deliveries
+
+```text
+webhook_deliveries.delivery_guid UNIQUE
+```
+
+The body is not stored, only `payload_sha256`.
+
+### Repository review state
+
+```text
+repositories: review_enabled = false OR status = 'ACCESSIBLE'
+organization_members(organization_id, user_id) UNIQUE
 ```
 
 ### Repository
@@ -947,6 +1023,10 @@ review_model_runs(review_id)
 usage_records(organization_id, recorded_at)
 
 audit_logs(organization_id, created_at)
+
+repositories(installation_id, status)
+
+webhook_deliveries(github_installation_id, received_at)
 ```
 
 ---
@@ -1005,6 +1085,7 @@ organization_members
 
 github_installations
 repositories
+webhook_deliveries
 
 repository_configs
 repository_config_versions
@@ -1063,3 +1144,20 @@ Deployment
 Destructive migrations require explicit review.
 
 Backward-compatible migrations should be preferred.
+
+---
+
+# 21. Amendments
+
+## Amendment 1 — Feature 001 (GitHub App installation and repository onboarding)
+
+Additive only; no existing constraint or index removed or changed.
+
+* `organizations`: add `account_type`.
+* `organization_members`: add `role_verified_at`; this feature uses roles `OWNER` and `MEMBER`, derived from GitHub.
+* `github_installations`: add `repository_selection`, `sync_status`, `sync_error_code`, `last_synced_at`, `removed_at`; define `status` values.
+* `repositories`: add `review_enabled`, `enabled_at`, `enabled_by_user_id`, `sync_conflict`, `last_synced_at`; define `status` values.
+* New table `webhook_deliveries`.
+* New audit actions, constraints and indexes listed in sections 14, 16 and 17.
+
+Rationale and state transitions: `specs/001-github-app-onboarding/data-model.md`.
