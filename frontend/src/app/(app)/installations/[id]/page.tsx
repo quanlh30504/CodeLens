@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { notFound } from 'next/navigation';
 import { InstallationSetupStatus } from '@/components/installation-setup-status';
-import { RepositoryToggle } from '@/components/repository-toggle';
+import { RepositoryRow } from '@/components/repository-row';
 import { SyncNowButton } from '@/components/sync-now-button';
 import {
   INSTALLATION_STATE_LABELS,
@@ -104,13 +104,11 @@ export default async function InstallationPage({ params, searchParams }: { param
           </thead>
           <tbody>
             {items.map((repository) => (
-              <tr key={repository.id}>
-                <td>{repository.fullName}</td>
-                <td>{repository.private ? 'Private' : 'Public'}</td>
-                <td>
-                  <RepositoryToggle repository={repository} canManage={installation.canManage && installation.status === 'ACTIVE'} />
-                </td>
-              </tr>
+              <RepositoryRow
+                key={repository.id}
+                repository={repository}
+                canManage={installation.canManage && installation.status === 'ACTIVE'}
+              />
             ))}
           </tbody>
         </table>
