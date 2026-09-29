@@ -32,7 +32,7 @@ Run guide for proving the feature end to end. It contains no implementation code
 
 ## B. Manual validation against real GitHub (optional, staging)
 
-1. Register a GitHub App with the ADR-006 permission set (Metadata: read, Contents: read, Pull requests: write, Issues: read/write where required), webhook URL `https://<host>/api/webhooks/github`, and a webhook secret.
+1. Register a GitHub App with only the read permissions this feature needs (repository metadata, plus the read-only membership permission confirmed in the T007 spike); and do not grant Pull requests or Issues write yet. Set the webhook URL to `https://<host>/api/webhooks/github` and choose a webhook secret.
 2. Provide the app ID, client ID/secret, private key file, webhook secret and session secret through the environment or mounted files on the host (never in Git). `deploy/env.example` lists the names.
 3. Start the stack with `docker compose up` on the host, open the site, sign in, choose Install, select two repositories on GitHub.
 4. Confirm the installation and both repositories appear; enable one; remove the other on GitHub and confirm it becomes inaccessible; uninstall the app and confirm the installation shows removed.

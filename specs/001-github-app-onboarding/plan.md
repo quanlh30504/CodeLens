@@ -33,7 +33,7 @@ Approach (details in [research.md](research.md)):
 
 **Performance Goals**: webhook acknowledged in under 2 s p95 (spec limit 10 s, FR-031); installation and repositories visible within 30 s p95 of GitHub completing installation (SC-002); 500-repository sync under 2 min (SC-003)
 
-**Constraints**: no write calls to GitHub in this feature; app permissions unchanged from ADR-006; secrets only via environment or mounted files outside Git; single-instance deployment; no new infrastructure beyond ADR-015
+**Constraints**: no write calls to GitHub in this feature; app registered with read permissions only (spec FR-032); write permissions from ADR-006 deferred to the features that need them; secrets only via environment or mounted files outside Git; single-instance deployment; no new infrastructure beyond ADR-015
 
 **Scale/Scope**: MVP: tens of organizations, up to a few hundred repositories per installation, low webhook rate; 4 screens (sign-in, installations, installation detail with repositories, setup-in-progress)
 
@@ -115,10 +115,12 @@ backend/
 
 frontend/
 ├── src/
-│   ├── app/                       # sign-in, installations, installation detail
+│   ├── app/                       # route groups (public)/sign-in and (app)/installations
 │   ├── components/
 │   └── lib/                       # typed API client (cookie-based, no tokens)
 └── tests/                         # component tests, Playwright journeys
+
+.github/workflows/         # secret-scan.yml, ci.yml
 
 deploy/
 ├── docker-compose.yml

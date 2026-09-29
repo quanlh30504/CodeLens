@@ -103,7 +103,7 @@ CodeLens accepts installation events only if they are authentic, and processes e
 2. **Given** a valid event that was already processed, **When** GitHub delivers it again, **Then** it is acknowledged, no duplicate installations, repositories or audit entries result, and state is unchanged.
 3. **Given** two deliveries of the same event arrive at nearly the same time, **When** both are processed, **Then** exactly one installation and one set of repositories exist afterwards.
 4. **Given** events arrive out of order (for example, repository changes before the installation is created), **When** they are processed, **Then** the final state matches GitHub's current state and no data is lost.
-5. **Given** an authentic event for an installation CodeLens has never seen and no user has claimed, **When** it is received, **Then** it is stored safely and becomes visible only to users who are authorized for that account.
+5. **Given** an authentic event for an installation CodeLens has never seen and no user has claimed, **When** it is received, **Then** it is recorded, no user can see it yet, and it becomes visible to a user only after GitHub confirms that user can access that installation (at their next sign-in or access refresh).
 
 ---
 
@@ -155,7 +155,7 @@ Users see only installations and repositories that belong to organizations they 
 - **FR-007**: After installation, the system MUST receive the GitHub installation event, verify its authenticity, and persist the installation together with its account or organization, account type, status and installation time.
 - **FR-008**: The system MUST associate each installation with exactly one CodeLens organization (tenant context), created on demand from the GitHub account or organization that owns the installation.
 - **FR-009**: The GitHub installation identifier MUST be treated as an authorization boundary: all repository data and repository operations reached through an installation MUST be scoped to that installation's organization.
-- **FR-010**: The system MUST record which users may view and manage each organization, and MUST only show an installation to users who are members of the owning organization. A user's role MUST be derived from GitHub (see FR-035 to FR-038), never self-declared and never inferred from who performed the installation.
+- **FR-010**: The system MUST record which users may view and manage each organization, and MUST only show an installation to users who are members of the owning organization. A user becomes a member only when GitHub confirms that user can access the installation; an installation whose event arrived before any such confirmation is invisible to everyone until then. A user's role MUST be derived from GitHub (see FR-035 to FR-038), never self-declared and never inferred from who performed the installation.
 
 **Repository synchronization**
 
@@ -165,7 +165,7 @@ Users see only installations and repositories that belong to organizations they 
 - **FR-014**: Synchronization MUST reflect additions, removals, renames and visibility changes reported by GitHub; removed repositories MUST be marked inaccessible rather than deleted, so their history is preserved.
 - **FR-015**: Newly discovered repositories MUST start in the disabled state.
 - **FR-016**: The system MUST provide a way to re-run synchronization on demand for an installation, limited to users holding the OWNER role (FR-035).
-- **FR-017**: A synchronization failure MUST NOT corrupt or erase previously synchronized data, and MUST be visible to the user with a way to retry.
+- **FR-017**: A synchronization failure MUST NOT corrupt or erase previously synchronized data. The system MUST retry failed synchronization automatically at least 3 times with increasing delay; if it still fails, the installation MUST show a failed synchronization state with a reason category (never raw GitHub text), and OWNER users MUST be able to retry at any time.
 
 **Visibility**
 
@@ -176,7 +176,7 @@ Users see only installations and repositories that belong to organizations they 
 **Enable and disable**
 
 - **FR-021**: Users holding the OWNER role (FR-035) MUST be able to enable or disable CodeLens review for each accessible repository without uninstalling the GitHub App. Users holding the MEMBER role MUST be able to view but not change repository state.
-- **FR-022**: A repository that is disabled, inaccessible, or belongs to a suspended or removed installation MUST NOT be eligible for any review processing.
+- **FR-022**: The system MUST expose a single review-eligibility rule: a repository is eligible for review only if it is accessible, enabled, and belongs to an active (not suspended or removed) installation. The rule MUST be evaluated against current state on every use so a change takes effect on the next evaluation. Any future feature that starts review work MUST apply this rule; this feature does not itself perform review processing.
 - **FR-023**: Every enable and disable action MUST be recorded in an audit trail with the acting user, repository, action and time.
 
 **Lifecycle**
@@ -195,8 +195,8 @@ Users see only installations and repositories that belong to organizations they 
 
 **Permissions and secrets**
 
-- **FR-032**: This feature MUST NOT request any GitHub permission beyond those declared for the CodeLens GitHub App in the architecture baseline, and MUST itself use only read access (installation and repository metadata). It MUST NOT perform any write operation on repositories, workflows, settings, issues or pull requests, even where the app's declared permissions would allow one.
-- **FR-033**: GitHub App private keys, webhook secrets, OAuth secrets and session secrets MUST NOT be exposed to any frontend client, written to logs, or stored in source control.
+- **FR-032**: For this feature the CodeLens GitHub App MUST be registered with, and this feature MUST use, only the read permissions it needs (repository metadata and installation data, plus the read-only permission for role verification in FR-039). Write permissions that the architecture baseline lists for later features (for example on pull requests or issues) MUST NOT be requested until a feature that needs them is specified. This feature MUST NOT perform any write operation on repositories, workflows, settings, issues or pull requests.
+- **FR-033**: GitHub App private keys, webhook secrets, OAuth secrets and session secrets MUST NOT be stored as plaintext application data, exposed to any frontend client, written to logs or audit entries, or stored in source control.
 - **FR-034**: Any short-lived credentials the system obtains from GitHub to read installation data MUST be used only by the server and MUST NOT be returned to the browser.
 
 **Roles and owner verification**
@@ -210,7 +210,7 @@ Users see only installations and repositories that belong to organizations they 
 ### Key Entities *(include if feature involves data)*
 
 - **User**: A person with a CodeLens account, identified permanently by their GitHub user identity. Has a display name, email and avatar that may change.
-- **Organization**: The tenant. Represents a GitHub organization or personal account that owns repositories. All data in this feature is scoped to exactly one Organization.
+- **Organization**: The tenant (also called tenant context or organization/tenant in this feature's documents). Represents a GitHub organization or personal account that owns repositories. All data in this feature is scoped to exactly one Organization.
 - **Organization Membership**: Links a User to an Organization with a role (OWNER or MEMBER) that determines whether they may view or manage it, and the time GitHub last confirmed that role.
 - **GitHub Installation**: A record that the CodeLens GitHub App is installed on an account, identified by GitHub's installation identifier. Has a status (active, suspended, removed), account type and installation time. Belongs to one Organization. Distinct from a User.
 - **Repository**: A GitHub repository accessible through an installation, identified by GitHub's stable repository identifier. Has owner, name, default branch, visibility and a CodeLens state (enabled, disabled, no longer accessible). Belongs to exactly one Organization and one Installation.
@@ -228,7 +228,7 @@ Users see only installations and repositories that belong to organizations they 
 - **SC-005**: Delivering the same valid event 10 times results in state identical to delivering it once, with zero duplicate installations, repositories or audit entries.
 - **SC-006**: Running repository synchronization repeatedly (at least 10 times in a row) against unchanged GitHub state produces zero changes after the first run.
 - **SC-007**: In tests with at least two tenants, 0% of requests by one tenant's users return another tenant's installations or repositories, including direct-identifier requests.
-- **SC-008**: Disabling a repository takes effect immediately: from the moment the user sees "disabled", no new review processing is accepted for it.
+- **SC-008**: Disabling a repository takes effect on the next eligibility evaluation: once the user has received confirmation that it is disabled, every later evaluation for that repository returns not eligible.
 - **SC-009**: Within 1 minute of GitHub reporting an uninstall, the installation shows as removed and 100% of its repositories are ineligible for review processing.
 - **SC-010**: No secret value (private key, webhook secret, OAuth secret, session secret, installation credential) appears in any browser-delivered content or application log during the acceptance tests.
 - **SC-011**: The feature works end to end in an automated test environment without a real GitHub installation, using simulated signed events.
@@ -241,10 +241,10 @@ Users see only installations and repositories that belong to organizations they 
 - Roles are only OWNER and MEMBER. GitHub organization owners are OWNER; the exact treatment of other GitHub roles (for example billing managers or custom roles) is MEMBER for now and may evolve. Finer-grained roles are out of scope.
 - Confirming roles with GitHub needs read access to organization membership. This may require one additional read-only GitHub App permission that the architecture baseline (ADR-006) does not yet list; recording it there is a prerequisite for this feature, not a change to this specification.
 - Repositories start disabled by default to follow least privilege and avoid unexpected review activity after installation.
-- The CodeLens GitHub App is already registered on GitHub with the permission set from the architecture baseline; registering or changing that configuration is outside this feature.
+- The CodeLens GitHub App is registered on GitHub for this feature with the minimum read permissions in FR-032; registering the app and later adding permissions is done outside this specification, following the architecture-change process.
 - Repositories that stop being accessible are kept with history and marked, not deleted.
 - A repository is expected to be reachable through only one installation; if it is not, the conflict is surfaced rather than duplicated.
-- Review processing itself does not exist yet; this feature defines the eligibility gate (enabled, accessible, active installation) that future review features must honor.
+- Review processing itself does not exist yet; this feature only provides the eligibility rule (FR-022) that future review features must honor.
 - Out of scope: AI code review, `.codelens.yml` parsing, AI provider configuration, model routing, billing, automatic code fixes, PR comments, PR approval, and any repository write operation.
 - Users have a modern web browser and a stable internet connection.
 
