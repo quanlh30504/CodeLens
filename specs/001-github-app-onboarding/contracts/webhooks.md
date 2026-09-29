@@ -33,10 +33,10 @@ Handlers never copy state from the payload. The payload supplies only the instal
 
 ## Queue jobs
 
-| Job | Job ID | Concurrency |
+| Job | Job ID (BullMQ rejects `:`) | Concurrency |
 |-----|--------|-------------|
-| `reconcile-installation` | `reconcile:<githubInstallationId>` | One write phase per installation (advisory lock) |
-| `sync-repositories` | `sync:<githubInstallationId>` | Same lock |
+| `reconcile-installation` | `reconcile-<githubInstallationId>` | One write phase per installation (advisory lock) |
+| `sync-repositories` | `sync-<githubInstallationId>` | Same lock |
 
 Failed jobs retry with exponential backoff (up to 5 attempts); after the last attempt the installation `sync_status` is `FAILED` with an error code.
 

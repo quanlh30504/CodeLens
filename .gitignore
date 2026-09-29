@@ -29,3 +29,4 @@ Thumbs.db
 playwright-report/
 test-results/
 frontend/next-env.d.ts
+backend/dist-fakes/

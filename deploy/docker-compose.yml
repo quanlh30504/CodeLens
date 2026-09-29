@@ -1,0 +1,136 @@
+# Single-instance deployment (ADR-015). Secrets come from the host environment or a git-ignored
+# .env file next to this file (see env.example for names). The GitHub App private key is mounted
+# read-only from a host path, never copied into an image.
+name: codelens
+
+x-app-env: &app-env
+  NODE_ENV: production
+  DATABASE_URL: postgresql://codelens:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/codelens
+  REDIS_URL: redis://redis:6379
+  PUBLIC_BASE_URL: ${PUBLIC_BASE_URL:?set PUBLIC_BASE_URL}
+  GITHUB_APP_ID: ${GITHUB_APP_ID:?set GITHUB_APP_ID}
+  GITHUB_APP_CLIENT_ID: ${GITHUB_APP_CLIENT_ID:?set GITHUB_APP_CLIENT_ID}
+  GITHUB_APP_SLUG: ${GITHUB_APP_SLUG:?set GITHUB_APP_SLUG}
+  GITHUB_APP_CLIENT_SECRET: ${GITHUB_APP_CLIENT_SECRET:?set GITHUB_APP_CLIENT_SECRET}
+  GITHUB_WEBHOOK_SECRET: ${GITHUB_WEBHOOK_SECRET:?set GITHUB_WEBHOOK_SECRET}
+  SESSION_SECRET: ${SESSION_SECRET:?set SESSION_SECRET}
+  GITHUB_APP_PRIVATE_KEY_FILE: /run/secrets/github_app_private_key.pem
+
+x-app-secrets: &app-secrets
+  - github_app_private_key
+
+secrets:
+  github_app_private_key:
+    # Host path to the downloaded key, mode 0400, outside the repository and the build context.
+    file: ${GITHUB_APP_PRIVATE_KEY_HOST_PATH:?set GITHUB_APP_PRIVATE_KEY_HOST_PATH}
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: codelens
+      POSTGRES_USER: codelens
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U codelens -d codelens"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    # Append-only persistence so sessions and queued jobs survive a restart.
+    command: ["redis-server", "--appendonly", "yes"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  # Applies the committed migrations before the API and worker start (Constitution XIV:
+  # no manual production schema changes).
+  migrate:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: build
+    working_dir: /app/backend
+    command: ["pnpm", "exec", "prisma", "migrate", "deploy"]
+    environment:
+      DATABASE_URL: postgresql://codelens:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@postgres:5432/codelens
+    depends_on:
+      postgres:
+        condition: service_healthy
+    restart: "no"
+
+  api:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment: *app-env
+    secrets: *app-secrets
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    command: ["node", "dist/worker.js"]
+    environment: *app-env
+    secrets: *app-secrets
+    depends_on:
+      migrate:
+        condition: service_completed_successfully
+      redis:
+        condition: service_healthy
+
+  web:
+    build:
+      context: ..
+      dockerfile: frontend/Dockerfile
+      target: runtime
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      API_INTERNAL_URL: http://api:3000
+
+  nginx:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/default.conf:/etc/nginx/conf.d/default.conf:ro
+    depends_on:
+      - api
+      - web
+
+  # Test profile only: the fake GitHub used for local end-to-end runs (never in production).
+  fake-github:
+    profiles: ["test"]
+    build:
+      context: ..
+      dockerfile: backend/Dockerfile
+      target: fake-github
+    environment:
+      FAKE_GITHUB_PORT: "4010"
+    ports:
+      - "4010:4010"
+
+volumes:
+  postgres-data:
+  redis-data:
