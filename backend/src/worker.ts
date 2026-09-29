@@ -1,14 +1,19 @@
 import 'reflect-metadata';
+import { NestFactory } from '@nestjs/core';
+import { AppModule } from './app.module';
 import { loadConfig } from './config/app-config';
 import { EnvSecretProvider } from './config/secret-provider';
 import { GithubAppClient } from './github/github-app.client';
 import { checkAppPermissionsAtStartup } from './github/permission-check';
+import { ReconcileProcessor } from './installations/reconcile.processor';
 import { createLogger } from './observability/logger';
+import { createBullConnection } from './queue/redis';
+import { WorkerRunner } from './queue/worker-runner';
+import { SyncProcessor } from './repositories/sync.processor';
 
 /**
- * Worker entry point (same image as the API). It refuses to start when configuration or
- * secrets are missing, or when the registered GitHub App holds a disallowed permission.
- * The job handlers are registered here as the reconcile and sync features are implemented.
+ * Worker entry point (same image as the API). It refuses to start when configuration or secrets
+ * are missing, or when the registered GitHub App holds a disallowed permission.
  */
 async function main(): Promise<void> {
   const config = loadConfig();
@@ -23,9 +28,26 @@ async function main(): Promise<void> {
   });
   await checkAppPermissionsAtStartup(github);
 
-  logger.info('worker configuration and permissions verified');
-  logger.error('no job handlers are registered yet; refusing to start');
-  process.exitCode = 1;
+  const context = await NestFactory.createApplicationContext(AppModule.forRoot({ config, secrets }), {
+    logger: ['error', 'warn'],
+  });
+  context.enableShutdownHooks();
+
+  const reconcile = context.get(ReconcileProcessor);
+  const sync = context.get(SyncProcessor);
+  const runner = new WorkerRunner(createBullConnection(config.redisUrl), logger);
+  runner.start({
+    reconcile: (data) => reconcile.handle(data),
+    sync: (data, jobId, info) => sync.handle(data, jobId, info),
+  });
+  logger.info('worker started');
+
+  const shutdown = async () => {
+    await runner.stop();
+    await context.close();
+  };
+  process.once('SIGTERM', () => void shutdown());
+  process.once('SIGINT', () => void shutdown());
 }
 
 main().catch((error: unknown) => {

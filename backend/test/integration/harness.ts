@@ -7,6 +7,8 @@ import { PrismaClient } from '@prisma/client';
 import { createApp } from '../../src/app';
 import type { AppConfig } from '../../src/config/app-config';
 import type { SecretProvider } from '../../src/config/secret-provider';
+import { ReconcileProcessor } from '../../src/installations/reconcile.processor';
+import { SyncProcessor } from '../../src/repositories/sync.processor';
 import { WorkerRunner, type JobHandlers } from '../../src/queue/worker-runner';
 import { createBullConnection } from '../../src/queue/redis';
 import { createLogger } from '../../src/observability/logger';
@@ -87,6 +89,7 @@ export function testConfig(infra: Infra, github: FakeGithub): AppConfig {
     githubAppSlug: 'codelens-test',
     githubApiBaseUrl: github.url,
     githubWebBaseUrl: github.url,
+    queueBackoffMs: 50,
     logLevel: 'silent',
   };
 }
@@ -110,4 +113,25 @@ export function startWorker(infra: Infra, handlers: JobHandlers): { stop(): Prom
       connection.disconnect();
     },
   };
+}
+
+/** Starts the real queue consumers (reconcile and sync) using the services of a running test app. */
+export function startAppWorker(app: INestApplication, infra: Infra): { stop(): Promise<void> } {
+  const reconcile = app.get(ReconcileProcessor);
+  const sync = app.get(SyncProcessor);
+  return startWorker(infra, {
+    reconcile: (data) => reconcile.handle(data),
+    sync: (data, jobId, info) => sync.handle(data, jobId, info),
+  });
+}
+
+/** Waits until `check` returns a truthy value, polling; used for asynchronous queue results. */
+export async function eventually<T>(check: () => Promise<T | false | null | undefined>, timeoutMs = 20000): Promise<T> {
+  const started = Date.now();
+  for (;;) {
+    const value = await check();
+    if (value) return value;
+    if (Date.now() - started > timeoutMs) throw new Error('condition not met in time');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
 }

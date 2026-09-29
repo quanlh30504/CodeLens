@@ -15,6 +15,7 @@ const schema = z.object({
   GITHUB_APP_SLUG: z.string().min(1),
   GITHUB_API_BASE_URL: z.string().url().default('https://api.github.com'),
   GITHUB_WEB_BASE_URL: z.string().url().default('https://github.com'),
+  QUEUE_BACKOFF_MS: z.coerce.number().int().min(0).default(5000),
   LOG_LEVEL: z.enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']).default('info'),
 });
 
@@ -29,6 +30,7 @@ export type AppConfig = {
   githubAppSlug: string;
   githubApiBaseUrl: string;
   githubWebBaseUrl: string;
+  queueBackoffMs: number;
   logLevel: string;
 };
 
@@ -53,6 +55,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): AppConfig {
     githubAppSlug: v.GITHUB_APP_SLUG,
     githubApiBaseUrl: v.GITHUB_API_BASE_URL.replace(/\/$/, ''),
     githubWebBaseUrl: v.GITHUB_WEB_BASE_URL.replace(/\/$/, ''),
+    queueBackoffMs: v.QUEUE_BACKOFF_MS,
     logLevel: v.LOG_LEVEL,
   };
 }

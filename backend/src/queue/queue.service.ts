@@ -10,12 +10,12 @@ import {
   syncJobId,
 } from './queue.names';
 
-const DEFAULT_JOB_OPTIONS = {
+const jobOptions = (backoffDelayMs: number) => ({
   attempts: 5,
-  backoff: { type: 'exponential' as const, delay: 5000 },
+  backoff: { type: 'exponential' as const, delay: backoffDelayMs },
   removeOnComplete: true,
   removeOnFail: { count: 200 },
-};
+});
 
 /**
  * Producer side of the review-independent job queues. Both jobs only carry the GitHub
@@ -31,9 +31,10 @@ export class QueueService {
   private readonly reconcile: Queue<InstallationJobData>;
   private readonly sync: Queue<InstallationJobData>;
 
-  constructor(connection: Redis) {
-    this.reconcile = new Queue<InstallationJobData>(RECONCILE_QUEUE, { connection, defaultJobOptions: DEFAULT_JOB_OPTIONS });
-    this.sync = new Queue<InstallationJobData>(SYNC_QUEUE, { connection, defaultJobOptions: DEFAULT_JOB_OPTIONS });
+  constructor(connection: Redis, backoffDelayMs = 5000) {
+    const defaultJobOptions = jobOptions(backoffDelayMs);
+    this.reconcile = new Queue<InstallationJobData>(RECONCILE_QUEUE, { connection, defaultJobOptions });
+    this.sync = new Queue<InstallationJobData>(SYNC_QUEUE, { connection, defaultJobOptions });
   }
 
   enqueueReconcile(githubInstallationId: number): Promise<EnqueueResult> {

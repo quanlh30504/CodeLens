@@ -93,28 +93,34 @@ export class GithubAppClient {
   ): Promise<{ repositories: GithubRepositoryInfo[]; truncated: boolean }> {
     const token = await this.installationToken(githubInstallationId);
     const all: GithubRepositoryInfo[] = [];
-    for (let page = 1; ; page += 1) {
-      const body = await this.getJson<{
-        repositories: {
-          id: number;
-          name: string;
-          full_name: string;
-          private: boolean;
-          default_branch?: string | null;
-          owner: { login: string };
-        }[];
-      }>(`/installation/repositories?per_page=${PAGE_SIZE}&page=${page}`, token);
-      for (const r of body.repositories) {
-        all.push({
-          githubRepositoryId: r.id,
-          owner: r.owner.login,
-          name: r.name,
-          fullName: r.full_name,
-          private: r.private,
-          defaultBranch: r.default_branch ?? null,
-        });
+    try {
+      for (let page = 1; ; page += 1) {
+        const body = await this.getJson<{
+          repositories: {
+            id: number;
+            name: string;
+            full_name: string;
+            private: boolean;
+            default_branch?: string | null;
+            owner: { login: string };
+          }[];
+        }>(`/installation/repositories?per_page=${PAGE_SIZE}&page=${page}`, token);
+        for (const r of body.repositories) {
+          all.push({
+            githubRepositoryId: r.id,
+            owner: r.owner.login,
+            name: r.name,
+            fullName: r.full_name,
+            private: r.private,
+            defaultBranch: r.default_branch ?? null,
+          });
+        }
+        if (body.repositories.length < PAGE_SIZE) break;
       }
-      if (body.repositories.length < PAGE_SIZE) break;
+    } catch (error) {
+      // A rejected installation token is dropped so the next attempt asks GitHub for a new one.
+      if (error instanceof GithubError && error.status === 401) this.tokens.delete(githubInstallationId);
+      throw error;
     }
     all.sort((a, b) => a.githubRepositoryId - b.githubRepositoryId);
     return { repositories: all.slice(0, limit), truncated: all.length > limit };

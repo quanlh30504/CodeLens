@@ -61,9 +61,14 @@ paths:
     get:
       summary: GitHub setup callback; links an installation only after GitHub confirms the user can access it
       parameters:
-        - { name: installation_id, in: query, required: true, schema: { type: integer, format: int64 } }
+        - name: installation_id
+          in: query
+          required: false
+          description: Sent by GitHub on return from installation. Absent when resuming after the user confirmed access with GitHub (it is then held server-side with the state).
+          schema: { type: integer, format: int64 }
         - { name: setup_action, in: query, schema: { type: string } }
         - { name: state, in: query, required: true, schema: { type: string } }
+        - { name: error, in: query, required: false, description: Sent by GitHub when the user declined authorization, schema: { type: string } }
         - name: code
           in: query
           required: false
@@ -267,7 +272,7 @@ components:
       description: Derived from accessibility and the review-enabled flag
     Installation:
       type: object
-      required: [id, status, syncStatus, displayState, organization, repositorySelection]
+      required: [id, status, syncStatus, displayState, organization, repositorySelection, githubSettingsUrl]
       properties:
         id: { type: string, format: uuid }
         status: { type: string, enum: [ACTIVE, SUSPENDED, REMOVED] }
@@ -275,7 +280,7 @@ components:
         syncErrorCode:
           type: string
           nullable: true
-          enum: [GITHUB_UNAVAILABLE, GITHUB_RATE_LIMITED, ACCESS_REVOKED, OTHER, REPOSITORY_LIMIT_EXCEEDED]
+          enum: [GITHUB_UNAVAILABLE, GITHUB_RATE_LIMITED, ACCESS_REVOKED, OTHER, REPOSITORY_LIMIT_EXCEEDED, null]
         displayState:
           type: string
           enum: [SETTING_UP, ACTIVE, SYNC_FAILED, LIMIT_REACHED, SUSPENDED, REMOVED]
@@ -291,6 +296,9 @@ components:
             id: { type: string, format: uuid }
             login: { type: string }
             accountType: { type: string, enum: [ORGANIZATION, USER] }
+        githubSettingsUrl:
+          type: string
+          description: GitHub page where an owner changes which repositories the app can access (CodeLens has no such control, FR-006)
         canManage: { type: boolean, description: True when the caller is OWNER (spec FR-040); the management guard still requires a confirmation no older than 10 minutes }
     Repository:
       type: object

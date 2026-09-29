@@ -151,7 +151,7 @@ export class FakeGithub {
     this.requests.push({ method, path: path + url.search, auth: kind });
 
     if (this.forceDown) return this.send(res, 503, { message: 'down' });
-    const failure = this.failures.find((f) => f.remaining > 0 && f.match.test(path));
+    const failure = this.failures.find((f) => f.remaining > 0 && f.match.test(path + url.search));
     if (failure) {
       failure.remaining -= 1;
       return this.send(res, failure.status, { message: 'scripted failure' }, failure.headers);

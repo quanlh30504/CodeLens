@@ -3,7 +3,13 @@ import type Redis from 'ioredis';
 import type { Logger } from 'pino';
 import { InstallationJobData, RECONCILE_QUEUE, SYNC_QUEUE } from './queue.names';
 
-export type JobHandler = (data: InstallationJobData, jobId: string) => Promise<void>;
+export interface AttemptInfo {
+  /** 1-based number of this attempt. */
+  attempt: number;
+  maxAttempts: number;
+}
+
+export type JobHandler = (data: InstallationJobData, jobId: string, info: AttemptInfo) => Promise<void>;
 
 export interface JobHandlers {
   reconcile: JobHandler;
@@ -26,7 +32,10 @@ export class WorkerRunner {
     const wrap = (name: string, handler: JobHandler) => async (job: Job<InstallationJobData>) => {
       const log = this.logger.child({ jobId: job.id, githubInstallationId: job.data.githubInstallationId });
       log.info({ queue: name, attempt: job.attemptsMade + 1 }, 'job started');
-      await handler(job.data, String(job.id));
+      await handler(job.data, String(job.id), {
+        attempt: job.attemptsMade + 1,
+        maxAttempts: job.opts.attempts ?? 1,
+      });
       log.info({ queue: name }, 'job finished');
     };
 

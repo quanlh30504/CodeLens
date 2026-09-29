@@ -17,8 +17,8 @@ export const BULL_CONNECTION = Symbol('BULL_CONNECTION');
     },
     {
       provide: QueueService,
-      inject: [BULL_CONNECTION],
-      useFactory: (connection: Redis) => new QueueService(connection),
+      inject: [BULL_CONNECTION, APP_CONFIG],
+      useFactory: (connection: Redis, config: AppConfig) => new QueueService(connection, config.queueBackoffMs),
     },
   ],
   exports: [BULL_CONNECTION, QueueService],

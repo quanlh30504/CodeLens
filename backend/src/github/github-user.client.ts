@@ -9,6 +9,11 @@ export interface GithubUserClientOptions {
   fetchImpl?: typeof fetch;
 }
 
+export interface GithubAccessibleInstallation {
+  githubInstallationId: number;
+  account: { githubId: string; login: string; type: 'ORGANIZATION' | 'USER' };
+}
+
 export interface GithubUserProfile {
   githubUserId: string;
   login: string;
@@ -66,6 +71,28 @@ export class GithubUserClient {
       email: body.email ?? null,
       avatarUrl: body.avatar_url ?? null,
     };
+  }
+
+  /** Installations of this app that the user can access. GitHub decides; CodeLens only reads. */
+  async listInstallations(userToken: string): Promise<GithubAccessibleInstallation[]> {
+    const result: GithubAccessibleInstallation[] = [];
+    for (let page = 1; page <= 20; page += 1) {
+      const body = await this.getJson<{
+        installations: { id: number; account: { id: number; login: string; type: string } }[];
+      }>(`/user/installations?per_page=100&page=${page}`, userToken);
+      for (const installation of body.installations) {
+        result.push({
+          githubInstallationId: installation.id,
+          account: {
+            githubId: String(installation.account.id),
+            login: installation.account.login,
+            type: installation.account.type === 'Organization' ? 'ORGANIZATION' : 'USER',
+          },
+        });
+      }
+      if (body.installations.length < 100) break;
+    }
+    return result;
   }
 
   private async getJson<T>(path: string, userToken: string): Promise<T> {

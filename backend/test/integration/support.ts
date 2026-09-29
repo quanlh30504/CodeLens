@@ -2,6 +2,7 @@ import { INestApplication } from '@nestjs/common';
 import request from 'supertest';
 import type { FakeGithub } from '../fakes/fake-github';
 import type { Infra } from './harness';
+import type { World } from './scenario';
 
 export interface SignedIn {
   cookie: string;
@@ -31,8 +32,55 @@ export async function signIn(app: INestApplication, github: FakeGithub, githubUs
   return { cookie: sessionCookie, csrfToken: me.body.csrfToken, userId: me.body.id };
 }
 
+/** Signs in a GitHub user that exists in the fake (creating it if needed). */
+export async function signInAs(world: World, githubUserId: number): Promise<SignedIn> {
+  if (!world.github.users.has(githubUserId)) world.github.addUser({ id: githubUserId, login: `user-${githubUserId}` });
+  return signIn(world.app, world.github, githubUserId);
+}
+
+export async function eventually<T>(check: () => Promise<T | false | null | undefined>, timeoutMs = 20000): Promise<T> {
+  const started = Date.now();
+  for (;;) {
+    const value = await check();
+    if (value) return value;
+    if (Date.now() - started > timeoutMs) throw new Error('condition not met in time');
+    await new Promise((resolve) => setTimeout(resolve, 100));
+  }
+}
+
 export async function resetData(infra: Infra): Promise<void> {
   await infra.prisma.$executeRawUnsafe(
     'TRUNCATE audit_logs, repositories, github_installations, organization_members, organizations, users, webhook_deliveries RESTART IDENTITY CASCADE',
   );
+}
+
+/** Starts installation and returns the state GitHub would send back. */
+export async function startInstall(app: INestApplication, session: SignedIn): Promise<{ state: string; location: string }> {
+  const response = await request(app.getHttpServer()).get('/api/installations/new').set('Cookie', session.cookie).expect(302);
+  const location = response.headers.location as string;
+  return { state: new URL(location).searchParams.get('state')!, location };
+}
+
+/** The browser returning from GitHub after installation, with GitHub's one-time authorization code. */
+export function returnFromGithub(
+  app: INestApplication,
+  session: SignedIn,
+  query: { installation_id?: number | string; state: string; code?: string; error?: string },
+) {
+  return request(app.getHttpServer()).get('/api/installations/callback').query(query).set('Cookie', session.cookie);
+}
+
+export async function completeInstall(
+  app: INestApplication,
+  github: FakeGithub,
+  session: SignedIn,
+  githubUserId: number,
+  installationId: number,
+) {
+  const { state } = await startInstall(app, session);
+  return returnFromGithub(app, session, {
+    installation_id: installationId,
+    state,
+    code: github.authCode(githubUserId),
+  });
 }
