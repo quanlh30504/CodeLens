@@ -36,7 +36,7 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 - [ ] T005 [P] Add `deploy/env.example` listing variable names only (no values): GitHub App ID, client ID, client secret, private key file path, webhook secret, session secret, database URL, Redis URL; add `.gitignore` entries for `.env*` and key files
 - [ ] T006 [P] Add a secret-scanning check that fails on private-key or secret patterns, in `.github/workflows/secret-scan.yml` (supports FR-033, SC-010)
 - [ ] T007 Spike (document only): with a throwaway GitHub App, confirm which read-only permission the organization-membership role call needs for a GitHub App user token; record the result in `specs/001-github-app-onboarding/research.md` under R4
-- [ ] T008 Amend `docs/adr/0001-architecture.md` ADR-006 to list the read-only permission found in T007 (no write added), per Constitution Principle XV. **Blocks T071 and T086** (role verification)
+- [ ] T008 Amend `docs/adr/0001-architecture.md` ADR-006 to list the read-only permission found in T007 (no write added), and state in ADR-006 that the write permissions it lists (pull requests, issues) are requested only when the feature that needs them is specified, per Constitution Principles II and XV. **Blocks T073 and T087** (role verification)
 
 ---
 
@@ -56,7 +56,7 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 ### Configuration, secrets, logging
 
 - [ ] T013 [P] Implement typed environment config with zod validation (fail fast on missing values) in `backend/src/config/config.module.ts`
-- [ ] T014 [P] Implement the `SecretProvider` interface and an environment/mounted-file implementation in `backend/src/config/secret-provider.ts`; no secret value may be returned by any public method other than the one that hands it to the GitHub client and the signature verifier
+- [ ] T014 [P] Implement the `SecretProvider` interface and an environment/mounted-file implementation in `backend/src/config/secret-provider.ts`; no secret value may be returned by any public method other than the one that hands it to the GitHub client and the signature verifier; no secret is ever written in plaintext to the database, logs or audit entries (FR-033)
 - [ ] T015 [P] Implement pino structured logging with a redaction list (private key, webhook secret, client secret, session secret, `Authorization`, cookies, tokens) and correlation fields `deliveryId`, `githubInstallationId`, `jobId`, `organizationId` in `backend/src/observability/logger.ts`
 - [ ] T016 [P] Unit test that redaction removes every listed secret name from log output, in `backend/test/unit/logger-redaction.spec.ts`
 - [ ] T017 [P] Implement a global exception filter that returns the `Error` shape from `contracts/api.openapi.yaml` and never includes stack traces or upstream GitHub text, in `backend/src/observability/error.filter.ts`
@@ -80,8 +80,10 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 - [ ] T026 Build the fake GitHub server implementing only the calls this feature uses (user authorization exchange, user profile, user installations, organization membership role, app installation lookup, installation token, installation repositories) with scripted failures and pagination in `backend/test/fakes/fake-github.ts`
 - [ ] T027 [P] Build signed webhook payload builders and fixtures for each event in `contracts/webhooks.md` (using a test-only secret) in `backend/test/fakes/webhook-fixtures.ts`
 - [ ] T028 Set up the integration-test harness starting PostgreSQL and Redis containers, applying migrations, and booting API and worker against the fake GitHub, in `backend/test/integration/harness.ts`
-- [ ] T029 [P] Create `deploy/docker-compose.yml` (Nginx, web, api, worker, PostgreSQL, Redis; private key mounted read-only from a host path, not from the build context) and `deploy/nginx/default.conf` routing `/api` to the API and everything else to the web app on one origin
+- [ ] T029 [P] Create `deploy/docker-compose.yml` (Nginx, web, api, worker, PostgreSQL, Redis; private key mounted read-only from a host path, not from the build context) and `deploy/nginx/default.conf` routing `/api` to the API and everything else to the web app on one origin; add a `test` profile that also starts the fake GitHub server from T026; configure Redis with append-only persistence (AOF) so sessions survive a restart
 - [ ] T030 [P] Scaffold the typed same-origin API client (cookie-based, CSRF header, no token storage) in `frontend/src/lib/api-client.ts`
+- [ ] T031 Add a migration step to the deploy definition that applies `backend/prisma/migrations` before the API and worker start, in `deploy/docker-compose.yml` (Constitution XIV: no manual schema changes)
+- [ ] T032 [P] Add a CI workflow that runs lint, unit, contract and integration suites on every push and pull request in `.github/workflows/ci.yml`
 
 **Checkpoint**: Foundation ready. User story work can begin.
 
@@ -95,17 +97,17 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 
 ### Tests for User Story 1
 
-- [ ] T031 [P] [US1] Contract test for `/auth/github/login`, `/auth/github/callback`, `/auth/logout`, `/me` against `contracts/api.openapi.yaml` in `backend/test/contract/auth.contract.spec.ts`
-- [ ] T032 [P] [US1] Integration test: first sign-in creates one user; second reuses it; renamed login updates the same row; denied/cancelled sign-in creates nothing and returns the error redirect; unauthenticated requests get 401 with no tenant data (US1 scenarios 1 to 5) in `backend/test/integration/sign-in.spec.ts`
-- [ ] T033 [P] [US1] Integration test asserting no GitHub user token, client secret or session secret appears in any response body, header (other than the httpOnly cookie) or log line during sign-in (FR-034, SC-010) in `backend/test/integration/sign-in-secrets.spec.ts`
+- [ ] T033 [P] [US1] Contract test for `/auth/github/login`, `/auth/github/callback`, `/auth/logout`, `/me` against `contracts/api.openapi.yaml` in `backend/test/contract/auth.contract.spec.ts`
+- [ ] T034 [P] [US1] Integration test: first sign-in creates one user; second reuses it; renamed login updates the same row; denied/cancelled sign-in creates nothing and returns the error redirect; unauthenticated requests get 401 with no tenant data (US1 scenarios 1 to 5) in `backend/test/integration/sign-in.spec.ts`; a session that expires while the user is on a page redirects to sign-in with no server-side state lost (Edge Case)
+- [ ] T035 [P] [US1] Integration test asserting no GitHub user token, client secret or session secret appears in any response body, header (other than the httpOnly cookie) or log line during sign-in (FR-034, SC-010) in `backend/test/integration/sign-in-secrets.spec.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T034 [US1] Implement the GitHub App user-authorization redirect with a single-use, session-bound `state` (random, expires in 10 minutes, stored in Redis) in `backend/src/auth/github-login.controller.ts`
-- [ ] T035 [US1] Implement the callback: exchange the code, read the GitHub user's numeric ID and profile, upsert `users` by `github_user_id`, set `last_login_at`, create the session, then discard the user token, in `backend/src/auth/github-login.service.ts`
-- [ ] T036 [US1] Implement `GET /me`, `POST /auth/logout` (revoke session server-side) in `backend/src/auth/me.controller.ts`
-- [ ] T037 [P] [US1] Build the sign-in page and denied-sign-in message in `frontend/src/app/(public)/sign-in/page.tsx`
-- [ ] T038 [P] [US1] Build the authenticated layout with redirect-to-sign-in for unauthenticated visitors in `frontend/src/app/(app)/layout.tsx`
+- [ ] T036 [US1] Implement the GitHub App user-authorization redirect with a single-use, session-bound `state` (random, expires in 10 minutes, stored in Redis) in `backend/src/auth/github-login.controller.ts`
+- [ ] T037 [US1] Implement the callback: exchange the code, read the GitHub user's numeric ID and profile, upsert `users` by `github_user_id`, set `last_login_at`, create the session, then discard the user token, in `backend/src/auth/github-login.service.ts`
+- [ ] T038 [US1] Implement `GET /me`, `POST /auth/logout` (revoke session server-side) in `backend/src/auth/me.controller.ts`
+- [ ] T039 [P] [US1] Build the sign-in page and denied-sign-in message in `frontend/src/app/(public)/sign-in/page.tsx`
+- [ ] T040 [P] [US1] Build the authenticated layout with redirect-to-sign-in for unauthenticated visitors in `frontend/src/app/(app)/layout.tsx`
 
 **Checkpoint**: Sign-in works end to end and is independently testable.
 
@@ -119,25 +121,26 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 
 ### Tests for User Story 2
 
-- [ ] T039 [P] [US2] Contract tests for `/installations/new`, `/installations/callback`, `/installations`, `/installations/{installationId}`, `/installations/{installationId}/repositories` in `backend/test/contract/installations.contract.spec.ts`
-- [ ] T040 [P] [US2] Integration test: install callback with valid state and user-accessible installation ID creates organization, installation and repositories via sync; "all" and "selected" selections; zero repositories; abandoned flow shows nothing (US2 scenarios 1 to 6) in `backend/test/integration/install-flow.spec.ts`
-- [ ] T041 [P] [US2] Security test: callback with a reused, expired or other-session `state` returns 400; callback with an installation ID the fake GitHub does not list for that user returns 404 and links nothing (FR-009, research R2) in `backend/test/integration/install-callback-security.spec.ts`
-- [ ] T042 [P] [US2] Integration test for repository sync: upsert by GitHub repository ID, rename in place, visibility change, missing repositories marked `INACCESSIBLE` with `review_enabled = false`, new repositories `review_enabled = false`, 10 consecutive runs produce zero changes after the first (FR-011 to FR-015, SC-006) in `backend/test/integration/repository-sync.spec.ts`
-- [ ] T043 [P] [US2] Integration test: sync of a 500-repository fake completes and is fully listed in under 2 minutes; a failing page fetch leaves prior data untouched and sets `sync_status = FAILED` with an error code only (FR-017, SC-003) in `backend/test/integration/repository-sync-scale-failure.spec.ts`
+- [ ] T041 [P] [US2] Contract tests for `/installations/new`, `/installations/callback`, `/installations`, `/installations/{installationId}`, `/installations/{installationId}/repositories` in `backend/test/contract/installations.contract.spec.ts`
+- [ ] T042 [P] [US2] Integration test: install callback with valid state and user-accessible installation ID creates organization, installation and repositories via sync; "all" and "selected" selections; zero repositories; abandoned flow shows nothing (US2 scenarios 1 to 6) in `backend/test/integration/install-flow.spec.ts`; the installing user sees the installation right after the callback (US2 scenario 2, requires T048); after the install callback the installation and repositories are visible within 30 seconds (SC-002) in the fake environment
+- [ ] T043 [P] [US2] Security test: callback with a reused, expired or other-session `state` returns 400; callback with an installation ID the fake GitHub does not list for that user returns 404 and links nothing (FR-009, research R2) in `backend/test/integration/install-callback-security.spec.ts`
+- [ ] T044 [P] [US2] Integration test for repository sync: upsert by GitHub repository ID, rename in place, visibility change, missing repositories marked `INACCESSIBLE` with `review_enabled = false`, new repositories `review_enabled = false`, 10 consecutive runs produce zero changes after the first (FR-011 to FR-015, SC-006) in `backend/test/integration/repository-sync.spec.ts`
+- [ ] T045 [P] [US2] Integration test: sync of a 500-repository fake completes and is fully listed in under 2 minutes; a failing page fetch leaves prior data untouched and sets `sync_status = FAILED` with an error code only (FR-017, SC-003) in `backend/test/integration/repository-sync-scale-failure.spec.ts`; a transient failure is retried at least 3 times with increasing delay before the FAILED state is shown, and an OWNER retry afterwards succeeds (FR-017)
 
 ### Implementation for User Story 2
 
-- [ ] T044 [US2] Implement organization upsert keyed by `github_org_id` (personal accounts stored with `account_type = USER`) in `backend/src/tenancy/organizations.service.ts`
-- [ ] T045 [US2] Implement the install redirect with single-use `state` in `backend/src/github/install/install.controller.ts`
-- [ ] T046 [US2] Implement the setup callback: validate `state`, confirm with the user's fresh authorization that the installation ID is among the user's accessible installations, fetch the installation via app JWT, run `reconcileInstallation`, enqueue sync, redirect to the installation page, in `backend/src/github/install/install-callback.service.ts`
-- [ ] T047 [US2] Implement `reconcileInstallation` (idempotent upsert of installation and organization from GitHub; `status` ACTIVE/SUSPENDED/REMOVED; `repository_selection`; not-found from GitHub means removal) in `backend/src/installations/reconcile.service.ts`
-- [ ] T048 [US2] Implement the repository sync job: page through the installation's repositories using an in-memory installation token, then in one transaction upsert by `github_repository_id`, mark missing ones `INACCESSIBLE` with `review_enabled = false`, keep new ones `review_enabled = false`, apply the two-installation conflict rule (`sync_conflict`), set `last_synced_at`; serialize per installation with a PostgreSQL advisory lock; job ID `sync:<githubInstallationId>`, in `backend/src/repositories/sync.service.ts` and `backend/src/repositories/sync.processor.ts`
-- [ ] T049 [US2] Implement `sync_status` transitions PENDING → SYNCING → SYNCED | FAILED and `sync_error_code` (codes only, never GitHub text) in `backend/src/installations/installation-sync-status.ts`
-- [ ] T050 [US2] Implement the read endpoints (`GET /installations`, `GET /installations/{installationId}`, `GET /installations/{installationId}/repositories` with `q`, `state`, `cursor`, `limit`), all through the tenant-scoped repository, in `backend/src/installations/installations.controller.ts`
-- [ ] T051 [US2] Write audit entry `GITHUB_INSTALLATION_ADDED` exactly once per new installation in `backend/src/installations/installation-audit.ts`
-- [ ] T052 [P] [US2] Build the installations list and "Install CodeLens" action in `frontend/src/app/(app)/installations/page.tsx`
-- [ ] T053 [P] [US2] Build the installation detail page (Installation → Organization → Repositories) with search, pagination, state labels, empty-list explanation and sync-failed banner in `frontend/src/app/(app)/installations/[id]/page.tsx`
-- [ ] T054 [US2] Build the "setting up" state that polls every 3 seconds up to 2 minutes, then shows a timeout message with a retry action, in `frontend/src/components/installation-setup-status.tsx`
+- [ ] T046 [US2] Implement organization upsert keyed by `github_org_id` (personal accounts stored with `account_type = USER`) in `backend/src/tenancy/organizations.service.ts`
+- [ ] T047 [US2] Implement the install redirect with single-use `state` in `backend/src/github/install/install.controller.ts`
+- [ ] T048 [US2] Implement access derivation: after sign-in and after the install callback, read the installations the user can access from GitHub (no extra permission needed), create or update `organization_members` for those installations' organizations with role `MEMBER`, and remove memberships GitHub no longer reports, in `backend/src/tenancy/membership-sync.service.ts`; call it from the sign-in callback (T037) and from T049
+- [ ] T049 [US2] Implement the setup callback: validate `state`, confirm with the user's fresh authorization that the installation ID is among the user's accessible installations, fetch the installation via app JWT, run `reconcileInstallation`, enqueue sync, redirect to the installation page, in `backend/src/github/install/install-callback.service.ts`
+- [ ] T050 [US2] Implement `reconcileInstallation` (idempotent upsert of installation and organization from GitHub; `status` ACTIVE/SUSPENDED/REMOVED; `repository_selection`; not-found from GitHub means removal) in `backend/src/installations/reconcile.service.ts`
+- [ ] T051 [US2] Implement the repository sync job: page through the installation's repositories using an in-memory installation token, then in one transaction upsert by `github_repository_id`, mark missing ones `INACCESSIBLE` with `review_enabled = false`, keep new ones `review_enabled = false`, apply the two-installation conflict rule (`sync_conflict`), set `last_synced_at`; serialize per installation with a PostgreSQL advisory lock; job ID `sync:<githubInstallationId>`, in `backend/src/repositories/sync.service.ts` and `backend/src/repositories/sync.processor.ts`
+- [ ] T052 [US2] Implement `sync_status` transitions PENDING → SYNCING → SYNCED | FAILED and `sync_error_code` (codes only, never GitHub text) in `backend/src/installations/installation-sync-status.ts`
+- [ ] T053 [US2] Implement the read endpoints (`GET /installations`, `GET /installations/{installationId}`, `GET /installations/{installationId}/repositories` with `q`, `state`, `cursor`, `limit`), all through the tenant-scoped repository and the session guard, with the same 404 for "missing" and "not yours", in `backend/src/installations/installations.controller.ts`
+- [ ] T054 [US2] Write installation lifecycle audit entries (`GITHUB_INSTALLATION_ADDED` here; suspended/unsuspended/removed are added by T095 and T096) once per state transition and never once per delivery, in `backend/src/installations/installation-audit.ts`
+- [ ] T055 [P] [US2] Build the installations list and "Install CodeLens" action in `frontend/src/app/(app)/installations/page.tsx`
+- [ ] T056 [P] [US2] Build the installation detail page (Installation → Organization → Repositories) with search, pagination, state labels, empty-list explanation and sync-failed banner in `frontend/src/app/(app)/installations/[id]/page.tsx`
+- [ ] T057 [US2] Build the "setting up" state that polls every 3 seconds up to 2 minutes, then shows a timeout message with a retry action, in `frontend/src/components/installation-setup-status.tsx`
 
 **Checkpoint**: A user can install and see repositories. This plus US1 is the demonstrable core.
 
@@ -151,20 +154,19 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 
 ### Tests for User Story 5
 
-- [ ] T055 [P] [US5] Contract test for `POST /webhooks/github` responses (202, 400, 401) in `backend/test/contract/webhook.contract.spec.ts`
-- [ ] T056 [P] [US5] Integration test: missing, wrong, malformed and body-modified signatures all return 401, write no row in any table, and log a rejection with no body or secret (FR-028, SC-004) in `backend/test/integration/webhook-signature.spec.ts`
-- [ ] T057 [P] [US5] Integration test: same delivery 10 times, and two concurrent identical deliveries, yield one installation, one repository set and one audit entry (FR-029, SC-005) in `backend/test/integration/webhook-idempotency.spec.ts`
-- [ ] T058 [P] [US5] Integration test: out-of-order sequences (repositories event before installation event; deleted before created; late duplicate) converge to the fake GitHub's current state (FR-030) in `backend/test/integration/webhook-ordering.spec.ts`
-- [ ] T059 [P] [US5] Integration test: event for an installation with no linked user is stored and visible only to users later verified for that account (US5 scenario 5); acknowledgement stays under 2 seconds p95 while sync work is queued (FR-031) in `backend/test/integration/webhook-unknown-installation.spec.ts`
+- [ ] T058 [P] [US5] Contract test for `POST /webhooks/github` responses (202, 400, 401) in `backend/test/contract/webhook.contract.spec.ts`
+- [ ] T059 [P] [US5] Integration test: missing, wrong, malformed and body-modified signatures all return 401, write no row in any table, and log a rejection with no body or secret (FR-028, SC-004) in `backend/test/integration/webhook-signature.spec.ts`
+- [ ] T060 [P] [US5] Integration test: same delivery 10 times, and two concurrent identical deliveries, yield one installation, one repository set and one audit entry (FR-029, SC-005) in `backend/test/integration/webhook-idempotency.spec.ts`
+- [ ] T061 [P] [US5] Integration test: out-of-order sequences (repositories event before installation event; deleted before created; late duplicate) converge to the fake GitHub's current state (FR-030) in `backend/test/integration/webhook-ordering.spec.ts`
+- [ ] T062 [P] [US5] Integration test: event for an installation with no linked user is recorded but invisible to everyone until GitHub confirms a user can access that installation at sign-in or access refresh (FR-010, US5 scenario 5); acknowledgement stays under 2 seconds p95 while sync work is queued (FR-031) in `backend/test/integration/webhook-unknown-installation.spec.ts`
 
 ### Implementation for User Story 5
 
-- [ ] T060 [US5] Capture the raw request body for the webhook route in `backend/src/main.ts` and `backend/src/github/webhook/raw-body.middleware.ts`
-- [ ] T061 [US5] Implement constant-time verification of `X-Hub-Signature-256` over the raw body before any parsing; reject with 401 and a metric plus structured log (reason, delivery ID if present, hashed source address; no body) in `backend/src/github/webhook/signature.guard.ts`
-- [ ] T062 [US5] Implement the webhook controller: require event and delivery headers (400 otherwise), insert `webhook_deliveries` by unique `delivery_guid` (store `payload_sha256` only), return 202 for repeats, otherwise enqueue, in `backend/src/github/webhook/webhook.controller.ts`
-- [ ] T063 [US5] Implement event routing per `contracts/webhooks.md`: `installation` created/deleted/suspend/unsuspend → `reconcile:<githubInstallationId>`; `installation_repositories` and `repository` events → `sync:<githubInstallationId>`; anything else → `IGNORED`. Handlers read only the installation ID from the payload, in `backend/src/github/webhook/event-router.ts`
-- [ ] T064 [US5] Implement the reconcile queue processor that updates `webhook_deliveries.status` (`PROCESSED`, `FAILED` with `error_code`) and `processed_at`, in `backend/src/installations/reconcile.processor.ts`
-- [ ] T065 [US5] Ensure audit entries for installation lifecycle are written on state transitions only, not per delivery, in `backend/src/installations/installation-audit.ts`
+- [ ] T063 [US5] Capture the raw request body for the webhook route in `backend/src/main.ts` and `backend/src/github/webhook/raw-body.middleware.ts`
+- [ ] T064 [US5] Implement constant-time verification of `X-Hub-Signature-256` over the raw body before any parsing; reject with 401 and a metric plus structured log (reason, delivery ID if present, hashed source address; no body) in `backend/src/github/webhook/signature.guard.ts`
+- [ ] T065 [US5] Implement the webhook controller: require event and delivery headers (400 otherwise), insert `webhook_deliveries` by unique `delivery_guid` (store `payload_sha256` only), return 202 for repeats, otherwise enqueue, in `backend/src/github/webhook/webhook.controller.ts`
+- [ ] T066 [US5] Implement event routing per `contracts/webhooks.md`: `installation` created/deleted/suspend/unsuspend → `reconcile:<githubInstallationId>`; `installation_repositories` and `repository` events → `sync:<githubInstallationId>`; anything else → `IGNORED`. Handlers read only the installation ID from the payload, in `backend/src/github/webhook/event-router.ts`
+- [ ] T067 [US5] Implement the reconcile queue processor that updates `webhook_deliveries.status` (`PROCESSED`, `FAILED` with `error_code`) and `processed_at`, in `backend/src/installations/reconcile.processor.ts`
 
 **Checkpoint**: Webhooks are authenticated, deduplicated and order-independent.
 
@@ -178,20 +180,19 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 
 ### Tests for User Story 6
 
-- [ ] T066 [P] [US6] Cross-tenant negative suite: for every read and write route in `contracts/api.openapi.yaml`, a user of tenant A gets 404 for tenant B's identifiers, with response bodies identical to a truly missing resource (FR-020, SC-007) in `backend/test/integration/tenant-isolation.spec.ts`
-- [ ] T067 [P] [US6] Integration test: membership and role are derived from GitHub at sign-in (organization owner → OWNER, other accessible users → MEMBER, personal account holder → OWNER); a user who belongs to several organizations sees each separately (US6 scenarios 1 and 4) in `backend/test/integration/membership-derivation.spec.ts`
-- [ ] T068 [P] [US6] Integration test: a user removed from an organization on the fake GitHub loses access at the next confirmation (sign-in, refresh access, or management action) and not before (US6 scenario 3) in `backend/test/integration/membership-revocation.spec.ts`
-- [ ] T069 [P] [US6] Unit test that no tenant-scoped repository method can be called without an `AuthorizationContext` (compile-time and runtime) in `backend/test/unit/tenant-scoped.spec.ts`
-- [ ] T070 [P] [US6] Integration test that queue jobs and logs for one tenant never carry another tenant's identifiers and that sync writes only within the installation's organization in `backend/test/integration/tenant-background.spec.ts`
+- [ ] T068 [P] [US6] Cross-tenant negative suite: for every read and write route in `contracts/api.openapi.yaml`, a user of tenant A gets 404 for tenant B's identifiers, with response bodies identical to a truly missing resource (FR-020, SC-007) in `backend/test/integration/tenant-isolation.spec.ts`
+- [ ] T069 [P] [US6] Integration test: membership and role are derived from GitHub at sign-in and on refresh (organization owner → OWNER, other accessible users → MEMBER, personal account holder → OWNER); a user who belongs to several organizations sees each separately (US6 scenarios 1 and 4) in `backend/test/integration/membership-derivation.spec.ts`
+- [ ] T070 [P] [US6] Integration test: a user removed from an organization on the fake GitHub loses access at the next confirmation (sign-in, refresh access, or management action) and not before (US6 scenario 3) in `backend/test/integration/membership-revocation.spec.ts`
+- [ ] T071 [P] [US6] Unit test that no tenant-scoped repository method can be called without an `AuthorizationContext` (compile-time and runtime) in `backend/test/unit/tenant-scoped.spec.ts`
+- [ ] T072 [P] [US6] Integration test that queue jobs and logs for one tenant never carry another tenant's identifiers and that sync writes only within the installation's organization in `backend/test/integration/tenant-background.spec.ts`
 
 ### Implementation for User Story 6
 
-- [ ] T071 [US6] At sign-in, read the user's accessible installations and, per organization, the membership role from GitHub; upsert `organization_members` with `role` and `role_verified_at`; remove memberships GitHub no longer reports, in `backend/src/tenancy/membership-sync.service.ts` (uses the permission from T008)
-- [ ] T072 [US6] Implement role mapping: GitHub owner → `OWNER`; other users with installation access → `MEMBER`; personal account holder → `OWNER`; any other GitHub role → `MEMBER`, in `backend/src/tenancy/role-mapper.ts`
-- [ ] T073 [US6] Implement `POST /me/refresh-access` (re-authorize with GitHub, then repeat T071) in `backend/src/auth/refresh-access.controller.ts`
-- [ ] T074 [US6] Apply the tenant-scoped repository and the session guard to every installation and repository route; return the same 404 for "missing" and "not yours", in `backend/src/installations/installations.controller.ts` and `backend/src/repositories/repositories.controller.ts`
-- [ ] T075 [US6] Ensure the worker runs sync and reconcile under an explicit system context that is bound to the installation's organization, in `backend/src/queue/system-context.ts`
-- [ ] T076 [P] [US6] Build the organization switcher and show only the caller's organizations in `frontend/src/components/organization-switcher.tsx`
+- [ ] T073 [US6] Add role derivation to `backend/src/tenancy/role-sync.service.ts`: per organization read the membership role from GitHub, set `OWNER` (organization owner, or personal account holder) or `MEMBER` (any other role), and store `role_verified_at`; extend the sign-in and refresh flows to call it (uses the permission from T008). Until this task exists all members are `MEMBER` (view-only), which does not block US1 or US2
+- [ ] T074 [US6] Implement role mapping: GitHub owner → `OWNER`; other users with installation access → `MEMBER`; personal account holder → `OWNER`; any other GitHub role → `MEMBER`, in `backend/src/tenancy/role-mapper.ts`
+- [ ] T075 [US6] Implement `POST /me/refresh-access` (re-authorize with GitHub, then repeat T073) in `backend/src/auth/refresh-access.controller.ts`
+- [ ] T076 [US6] Ensure the worker runs sync and reconcile under an explicit system context that is bound to the installation's organization, in `backend/src/queue/system-context.ts`
+- [ ] T077 [P] [US6] Build the organization switcher and show only the caller's organizations in `frontend/src/components/organization-switcher.tsx`
 
 **Checkpoint**: Isolation and GitHub-derived membership are enforced across all P1 stories.
 
@@ -205,21 +206,21 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 
 ### Tests for User Story 3
 
-- [ ] T077 [P] [US3] Contract tests for `PUT /repositories/{repositoryId}/review-enabled` and `POST /installations/{installationId}/sync` including 403 `REAUTH_REQUIRED` and 503 `ROLE_UNVERIFIABLE` in `backend/test/contract/management.contract.spec.ts`
-- [ ] T078 [P] [US3] Integration test: new repositories are disabled; OWNER enable/disable works and is idempotent; final toggle wins; audit entries for both actions; MEMBER rejected with state unchanged (US3 scenarios 1 to 4, 9) in `backend/test/integration/enable-disable.spec.ts`
-- [ ] T079 [P] [US3] Integration test for role freshness: a role confirmed more than 10 minutes ago yields `REAUTH_REQUIRED`, and after re-confirmation the change is applied; an owner demoted on GitHub is rejected at re-confirmation; GitHub unreachable refuses the request and trusts no stored role; an installer who is not a GitHub owner is rejected (FR-036 to FR-038, US3 scenarios 5 to 8, SC-012) in `backend/test/integration/role-freshness.spec.ts`
-- [ ] T080 [P] [US3] Unit and integration tests for the eligibility function: eligible only when `repositories.status = 'ACCESSIBLE'` AND `review_enabled` AND installation `status = 'ACTIVE'`; false for disabled, inaccessible, suspended and removed; reads current state each call (FR-022, SC-008) in `backend/test/integration/review-eligibility.spec.ts`
-- [ ] T081 [P] [US3] Test that manual sync is OWNER-only and that repeated requests collapse into one queued job (`ALREADY_QUEUED`) in `backend/test/integration/manual-sync.spec.ts`
+- [ ] T078 [P] [US3] Contract tests for `PUT /repositories/{repositoryId}/review-enabled` and `POST /installations/{installationId}/sync` including 403 `REAUTH_REQUIRED` and 503 `ROLE_UNVERIFIABLE` in `backend/test/contract/management.contract.spec.ts`
+- [ ] T079 [P] [US3] Integration test: new repositories are disabled; OWNER enable/disable works and is idempotent; final toggle wins; audit entries for both actions; MEMBER rejected with state unchanged (US3 scenarios 1 to 4, 9) in `backend/test/integration/enable-disable.spec.ts`
+- [ ] T080 [P] [US3] Integration test for role freshness: a role confirmed more than 10 minutes ago yields `REAUTH_REQUIRED`, and after re-confirmation the change is applied; an owner demoted on GitHub is rejected at re-confirmation; GitHub unreachable refuses the request and trusts no stored role; an installer who is not a GitHub owner is rejected (FR-036 to FR-038, US3 scenarios 5 to 8, SC-012) in `backend/test/integration/role-freshness.spec.ts`
+- [ ] T081 [P] [US3] Unit and integration tests for the eligibility function: eligible only when `repositories.status = 'ACCESSIBLE'` AND `review_enabled` AND installation `status = 'ACTIVE'`; false for disabled, inaccessible, suspended and removed; reads current state each call (FR-022, SC-008) in `backend/test/integration/review-eligibility.spec.ts`; after a disable, every later evaluation returns not eligible (SC-008); all future review features must call this function (FR-022)
+- [ ] T082 [P] [US3] Test that manual sync is OWNER-only and that repeated requests collapse into one queued job (`ALREADY_QUEUED`) in `backend/test/integration/manual-sync.spec.ts`
 
 ### Implementation for User Story 3
 
-- [ ] T082 [US3] Implement the role-freshness guard: management routes require `role_verified_at` within 10 minutes, otherwise respond 403 `REAUTH_REQUIRED`; if GitHub cannot give a definite answer respond 503 `ROLE_UNVERIFIABLE` and never fall back to the stored role, in `backend/src/auth/role-freshness.guard.ts`
-- [ ] T083 [US3] Implement `PUT /repositories/{repositoryId}/review-enabled`: OWNER only; set `review_enabled`, `enabled_at`, `enabled_by_user_id`; reject enabling an `INACCESSIBLE` repository with 409; write `REPOSITORY_ENABLED` / `REPOSITORY_DISABLED` audit entries, in `backend/src/repositories/review-enabled.controller.ts` and `backend/src/repositories/review-enabled.service.ts`
-- [ ] T084 [US3] Implement `POST /installations/{installationId}/sync` (OWNER only; deterministic job ID so repeats return `ALREADY_QUEUED`) in `backend/src/installations/manual-sync.controller.ts`
-- [ ] T085 [US3] Implement `isReviewEligible(repositoryId)` as a single exported domain function reading current state, in `backend/src/repositories/review-eligibility.ts`, and export it for future review features
-- [ ] T086 [US3] Re-confirm the caller's role with GitHub on a `REAUTH_REQUIRED` retry and update `role_verified_at`, in `backend/src/tenancy/role-reconfirm.service.ts` (uses the permission from T008)
-- [ ] T087 [P] [US3] Build the enable/disable toggle with optimistic update that reverts on failure, read-only display for MEMBER, and the re-confirm-with-GitHub flow on `REAUTH_REQUIRED`, in `frontend/src/components/repository-toggle.tsx`
-- [ ] T088 [P] [US3] Add the manual "Sync now" action (OWNER only) with sync status in `frontend/src/components/sync-now-button.tsx`
+- [ ] T083 [US3] Implement the role-freshness guard: management routes require `role_verified_at` within 10 minutes, otherwise respond 403 `REAUTH_REQUIRED`; if GitHub cannot give a definite answer respond 503 `ROLE_UNVERIFIABLE` and never fall back to the stored role, in `backend/src/auth/role-freshness.guard.ts`
+- [ ] T084 [US3] Implement `PUT /repositories/{repositoryId}/review-enabled`: OWNER only; set `review_enabled`, `enabled_at`, `enabled_by_user_id`; reject enabling an `INACCESSIBLE` repository with 409; write `REPOSITORY_ENABLED` / `REPOSITORY_DISABLED` audit entries, in `backend/src/repositories/review-enabled.controller.ts` and `backend/src/repositories/review-enabled.service.ts`
+- [ ] T085 [US3] Implement `POST /installations/{installationId}/sync` (OWNER only; deterministic job ID so repeats return `ALREADY_QUEUED`) in `backend/src/installations/manual-sync.controller.ts`
+- [ ] T086 [US3] Implement `isReviewEligible(repositoryId)` as a single exported domain function reading current state, in `backend/src/repositories/review-eligibility.ts`, and export it for future review features
+- [ ] T087 [US3] Re-confirm the caller's role with GitHub on a `REAUTH_REQUIRED` retry and update `role_verified_at`, in `backend/src/tenancy/role-reconfirm.service.ts` (uses the permission from T008)
+- [ ] T088 [P] [US3] Build the enable/disable toggle with optimistic update that reverts on failure, read-only display for MEMBER, and the re-confirm-with-GitHub flow on `REAUTH_REQUIRED`, in `frontend/src/components/repository-toggle.tsx`
+- [ ] T089 [P] [US3] Add the manual "Sync now" action (OWNER only) with sync status in `frontend/src/components/sync-now-button.tsx`
 
 **Checkpoint**: Owners control which repositories are eligible; the gate is ready for future review features.
 
@@ -233,19 +234,19 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 
 ### Tests for User Story 4
 
-- [ ] T089 [P] [US4] Integration test: repositories added (disabled), removed (inaccessible, disabled, history kept), renamed (same row), transferred, visibility changed (US4 scenarios 1 to 3) in `backend/test/integration/lifecycle-repositories.spec.ts`
-- [ ] T090 [P] [US4] Integration test: uninstall marks installation `REMOVED`, sets `removed_at`, all repositories `INACCESSIBLE` and `review_enabled = false`, eligibility false, within 1 minute (FR-024, SC-009) in `backend/test/integration/lifecycle-uninstall.spec.ts`
-- [ ] T091 [P] [US4] Integration test: suspend and unsuspend change status and eligibility, each with one audit entry (FR-025, FR-027) in `backend/test/integration/lifecycle-suspend.spec.ts`
-- [ ] T092 [P] [US4] Integration test: reinstall creates a new installation row under the same organization, keeps the removed row and history, creates no duplicate organization, repositories start disabled (FR-026) in `backend/test/integration/lifecycle-reinstall.spec.ts`
-- [ ] T093 [P] [US4] Integration test: missed event repaired by manual sync; two installations reporting the same repository follow the conflict rule and set `sync_conflict` (US4 scenario 7, research R7) in `backend/test/integration/lifecycle-conflict-resync.spec.ts`
+- [ ] T090 [P] [US4] Integration test: repositories added (disabled), removed (inaccessible, disabled, history kept), renamed (same row), transferred, visibility changed (US4 scenarios 1 to 3) in `backend/test/integration/lifecycle-repositories.spec.ts`; a `repository` `deleted` event marks the repository inaccessible and disabled (Edge Case)
+- [ ] T091 [P] [US4] Integration test: uninstall marks installation `REMOVED`, sets `removed_at`, all repositories `INACCESSIBLE` and `review_enabled = false`, eligibility false, within 1 minute (FR-024, SC-009) in `backend/test/integration/lifecycle-uninstall.spec.ts`
+- [ ] T092 [P] [US4] Integration test: suspend and unsuspend change status and eligibility, each with one audit entry (FR-025, FR-027) in `backend/test/integration/lifecycle-suspend.spec.ts`
+- [ ] T093 [P] [US4] Integration test: reinstall creates a new installation row under the same organization, keeps the removed row and history, creates no duplicate organization, repositories start disabled (FR-026) in `backend/test/integration/lifecycle-reinstall.spec.ts`
+- [ ] T094 [P] [US4] Integration test: missed event repaired by manual sync; two installations reporting the same repository follow the conflict rule and set `sync_conflict` (US4 scenario 7, research R7) in `backend/test/integration/lifecycle-conflict-resync.spec.ts`
 
 ### Implementation for User Story 4
 
-- [ ] T094 [US4] Implement suspension handling in reconcile: status `SUSPENDED` with `suspended_at`, back to `ACTIVE` on unsuspend; audit `GITHUB_INSTALLATION_SUSPENDED` / `GITHUB_INSTALLATION_UNSUSPENDED` once per transition, in `backend/src/installations/reconcile.service.ts`
-- [ ] T095 [US4] Implement uninstall handling in reconcile: `REMOVED`, `removed_at`, all repositories `INACCESSIBLE` and `review_enabled = false` in one transaction; audit `GITHUB_INSTALLATION_REMOVED` once, in `backend/src/installations/reconcile.service.ts`
-- [ ] T096 [US4] Implement reinstall handling: match the organization by `github_org_id`, create a new `github_installations` row for the new GitHub installation ID, leave the removed row intact, in `backend/src/installations/reconcile.service.ts`
-- [ ] T097 [US4] Record `REPOSITORY_SYNC_FAILED` audit entries after the last retry and expose `syncStatus` and `syncErrorCode` to the UI, in `backend/src/repositories/sync.processor.ts`
-- [ ] T098 [P] [US4] Show removed and suspended installations, inaccessible repositories and the conflict flag in the UI with their states, in `frontend/src/app/(app)/installations/[id]/page.tsx` and `frontend/src/components/repository-row.tsx`
+- [ ] T095 [US4] Implement suspension handling in reconcile: status `SUSPENDED` with `suspended_at`, back to `ACTIVE` on unsuspend; audit `GITHUB_INSTALLATION_SUSPENDED` / `GITHUB_INSTALLATION_UNSUSPENDED` once per transition, in `backend/src/installations/reconcile.service.ts`
+- [ ] T096 [US4] Implement uninstall handling in reconcile: `REMOVED`, `removed_at`, all repositories `INACCESSIBLE` and `review_enabled = false` in one transaction; audit `GITHUB_INSTALLATION_REMOVED` once, in `backend/src/installations/reconcile.service.ts`
+- [ ] T097 [US4] Implement reinstall handling: match the organization by `github_org_id`, create a new `github_installations` row for the new GitHub installation ID, leave the removed row intact, in `backend/src/installations/reconcile.service.ts`
+- [ ] T098 [US4] Record `REPOSITORY_SYNC_FAILED` audit entries after the last retry and expose `syncStatus` and `syncErrorCode` to the UI, in `backend/src/repositories/sync.processor.ts`; after automatic retries are exhausted show the failed state with a reason category and no GitHub text (FR-017)
+- [ ] T099 [P] [US4] Show removed and suspended installations, inaccessible repositories and the conflict flag in the UI with their states, in `frontend/src/app/(app)/installations/[id]/page.tsx` and `frontend/src/components/repository-row.tsx`
 
 **Checkpoint**: CodeLens stays consistent with GitHub through every lifecycle change.
 
@@ -255,14 +256,14 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 
 **Purpose**: End-to-end validation and hardening across stories.
 
-- [ ] T099 [P] Add Playwright journeys for sign-in, install, view repositories, enable/disable, and uninstall against the fake GitHub in `frontend/tests/e2e/onboarding.spec.ts`
-- [ ] T100 [P] Add a test that fails when any response body, HTML page, or log line in the acceptance suite contains a configured secret value or private-key marker (SC-010) in `backend/test/integration/secret-leak-scan.spec.ts`
-- [ ] T101 [P] Add a test that fails if the GitHub client class exposes any write method or if any test double receives a non-GET call to repository, workflow, settings, issue or pull-request endpoints (FR-032) in `backend/test/unit/github-readonly.spec.ts`
-- [ ] T102 Run every scenario in `specs/001-github-app-onboarding/quickstart.md` section A and record results in `specs/001-github-app-onboarding/quickstart.md`
-- [ ] T103 Add metrics counters (deliveries received, rejected, duplicate; sync duration; sync failures) and a startup log line without secret values, in `backend/src/observability/metrics.ts`
-- [ ] T104 [P] Document deployment and secret provisioning (private key mounted read-only, mode 0400, outside the build context) in `deploy/README.md`
-- [ ] T105 Walk through `specs/001-github-app-onboarding/checklists/requirements-quality.md` with the reviewer and record outcomes inline; fix spec gaps found before release
-- [ ] T106 Run `/speckit-analyze` for cross-artifact consistency and resolve findings
+- [ ] T100 [P] Add Playwright journeys for sign-in, install, view repositories, enable/disable, and uninstall against the fake GitHub in `frontend/tests/e2e/onboarding.spec.ts`; include a timed first-visit-to-repositories run that must finish in under 5 minutes (SC-001)
+- [ ] T101 [P] Add a test that fails when any response body, HTML page, or log line in the acceptance suite contains a configured secret value or private-key marker (SC-010) in `backend/test/integration/secret-leak-scan.spec.ts`
+- [ ] T102 [P] Add a test that fails if the GitHub client class exposes any write method or if any test double receives a non-GET call to repository, workflow, settings, issue or pull-request endpoints (FR-032) in `backend/test/unit/github-readonly.spec.ts`; also assert the API exposes no route or UI action that grants or widens repository access other than redirecting to GitHub's installation page (FR-006)
+- [ ] T103 Run every scenario in `specs/001-github-app-onboarding/quickstart.md` section A and record results in `specs/001-github-app-onboarding/quickstart.md`
+- [ ] T104 Add metrics counters (deliveries received, rejected, duplicate; sync duration; sync failures) and a startup log line without secret values, in `backend/src/observability/metrics.ts`
+- [ ] T105 [P] Document deployment and secret provisioning (private key mounted read-only, mode 0400, outside the build context) in `deploy/README.md`
+- [ ] T106 Walk through `specs/001-github-app-onboarding/checklists/requirements-quality.md` with the reviewer and record outcomes inline; fix spec gaps found before release
+- [ ] T107 Run `/speckit-analyze` for cross-artifact consistency and resolve findings
 
 ---
 
@@ -273,9 +274,9 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 - **Setup (Phase 1)**: none. T007 → T008 are documentation gates.
 - **Foundational (Phase 2)**: depends on T001 to T005; blocks all stories.
 - **US1 (Phase 3)**: depends on Foundational.
-- **US2 (Phase 4)**: depends on US1 (needs a session).
-- **US5 (Phase 5)**: depends on US2 (event handlers call `reconcileInstallation` and the sync job from T047, T048).
-- **US6 (Phase 6)**: depends on US1 and US2 (membership derived at sign-in, applied to installation routes); T071 also depends on T008.
+- **US2 (Phase 4)**: depends on US1 (needs a session). It does not depend on T007/T008: access derivation (T048) needs no extra GitHub permission.
+- **US5 (Phase 5)**: depends on US2 (event handlers call `reconcileInstallation` and the sync job from T050, T051).
+- **US6 (Phase 6)**: depends on US1 and US2 (builds on T048); role derivation T073 also depends on T008.
 - **US3 (Phase 7)**: depends on US2 and US6 (roles) and T008.
 - **US4 (Phase 8)**: depends on US2 and US5 (uses reconcile and event routing).
 - **Polish (Phase 9)**: depends on the stories being included.
@@ -301,10 +302,10 @@ Web application per plan.md: `backend/src/`, `backend/test/`, `backend/prisma/`,
 ### Parallel Example: User Story 2
 
 ```text
-Task: "Contract tests for installation routes in backend/test/contract/installations.contract.spec.ts"      (T039)
-Task: "Install-callback security test in backend/test/integration/install-callback-security.spec.ts"        (T041)
-Task: "Repository sync test in backend/test/integration/repository-sync.spec.ts"                            (T042)
-Task: "Installations list page in frontend/src/app/(app)/installations/page.tsx"                            (T052)
+Task: "Contract tests for installation routes in backend/test/contract/installations.contract.spec.ts"      (T041)
+Task: "Install-callback security test in backend/test/integration/install-callback-security.spec.ts"        (T043)
+Task: "Repository sync test in backend/test/integration/repository-sync.spec.ts"                            (T044)
+Task: "Installations list page in frontend/src/app/(app)/installations/page.tsx"                            (T055)
 ```
 
 ---
@@ -314,8 +315,8 @@ Task: "Installations list page in frontend/src/app/(app)/installations/page.tsx"
 ### MVP First
 
 1. Phase 1 and Phase 2.
-2. US1 (sign-in) then US2 (install and view). **Stop and validate**: a user can install and see repositories.
-3. Add US5 before exposing the webhook endpoint publicly; do not deploy the webhook route without signature verification (T060 to T062).
+2. US1 (sign-in) then US2 (install and view). **Stop and validate**: a user can install and see repositories. The MVP does not wait for the permission spike (T007/T008).
+3. Add US5 before exposing the webhook endpoint publicly; do not deploy the webhook route without signature verification (T063 to T065).
 4. Add US6 before any second user or organization is onboarded.
 
 ### Incremental Delivery
