@@ -84,3 +84,20 @@ export async function completeInstall(
     code: github.authCode(githubUserId),
   });
 }
+
+/** Signs the user in, installs, and waits until the first synchronization has finished. */
+export async function installAndSync(
+  world: World,
+  githubUserId: number,
+  installationId: number,
+): Promise<{ session: SignedIn; id: string }> {
+  const session = await signInAs(world, githubUserId);
+  const callback = await completeInstall(world.app, world.github, session, githubUserId, installationId);
+  if (callback.status !== 302) throw new Error(`install callback answered ${callback.status}`);
+  const id = String(callback.headers.location).split('/').pop()!;
+  await eventually(async () => {
+    const r = await request(world.app.getHttpServer()).get(`/api/installations/${id}`).set('Cookie', session.cookie);
+    return r.body.displayState === 'ACTIVE';
+  });
+  return { session, id };
+}

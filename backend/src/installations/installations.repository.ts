@@ -27,7 +27,7 @@ export class InstallationsRepository extends TenantScopedRepository {
     super();
   }
 
-  list(scope: TenantScope): Promise<InstallationWithOrganization[]> {
+  async list(scope: TenantScope): Promise<InstallationWithOrganization[]> {
     return this.prisma.githubInstallation.findMany({
       where: this.organizationFilter(scope),
       include: { organization: true },

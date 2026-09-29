@@ -28,6 +28,10 @@ export function systemScope(organizationId: string): TenantScope {
 export abstract class TenantScopedRepository {
   /** Organization ids the scope may read or write. */
   protected allowedOrganizationIds(scope: TenantScope): string[] {
+    // Defence at run time as well as compile time: data access never proceeds without a scope.
+    if (!scope || (scope.kind !== 'user' && scope.kind !== 'system')) {
+      throw new Error('A tenant scope is required for every data access');
+    }
     return scope.kind === 'user' ? organizationIdsOf(scope.context) : [scope.organizationId];
   }
 

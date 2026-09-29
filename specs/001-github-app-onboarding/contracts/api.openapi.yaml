@@ -45,11 +45,13 @@ paths:
               schema: { $ref: '#/components/schemas/Me' }
         '401': { $ref: '#/components/responses/Unauthenticated' }
   /me/refresh-access:
-    post:
-      summary: Re-check which installations the user can access (requires fresh GitHub sign-in)
-      parameters: [ { $ref: '#/components/parameters/CsrfToken' } ]
+    get:
+      summary: Re-check which installations and roles the user has, by sending them through GitHub authorization again
+      description: |
+        Changes nothing by itself (it only redirects), so it is a plain GET. The sign-in callback that
+        follows re-reads installations and roles from GitHub and replaces the session.
       responses:
-        '302': { description: Redirect through GitHub authorization, then back to /installations }
+        '302': { description: Redirect to GitHub authorization, then back through the sign-in callback to /installations }
         '401': { $ref: '#/components/responses/Unauthenticated' }
   /installations/new:
     get:

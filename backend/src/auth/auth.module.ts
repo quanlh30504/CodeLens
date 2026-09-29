@@ -31,6 +31,7 @@ export const REDIS = Symbol('REDIS');
       useFactory: (redis: Redis) => new OAuthStateService(new RedisKeyValueStore(redis)),
     },
     GithubLoginService,
+    GithubLoginController,
     SessionGuard,
     CsrfGuard,
   ],

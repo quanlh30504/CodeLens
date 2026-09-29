@@ -1,16 +1,22 @@
 import Link from 'next/link';
 import { INSTALLATION_STATE_LABELS, Installation, noticeMessage } from '@/lib/installation-states';
-import { serverFetch } from '@/lib/server-api';
+import { OrganizationSwitcher } from '@/components/organization-switcher';
+import { RefreshAccessButton } from '@/components/refresh-access-button';
+import { filterByOrganization, selectableOrganization } from '@/lib/organizations';
+import { getMe, serverFetch } from '@/lib/server-api';
 
 export default async function InstallationsPage({
   searchParams,
 }: {
-  searchParams: Promise<{ notice?: string | string[] }>;
+  searchParams: Promise<{ notice?: string | string[]; org?: string | string[] }>;
 }) {
-  const { notice } = await searchParams;
+  const { notice, org } = await searchParams;
   const message = noticeMessage(notice);
   const data = await serverFetch<{ items: Installation[] }>('/installations');
-  const installations = data?.items ?? [];
+  const me = await getMe();
+  const organizations = me?.organizations ?? [];
+  const selected = selectableOrganization(organizations, org);
+  const installations = filterByOrganization(data?.items ?? [], selected);
 
   return (
     <main>
@@ -21,6 +27,8 @@ export default async function InstallationsPage({
       <p>
         <a href="/api/installations/new">Install CodeLens</a>
       </p>
+      <OrganizationSwitcher organizations={organizations} selected={selected} />
+      <RefreshAccessButton />
 
       {installations.length === 0 ? (
         <p>

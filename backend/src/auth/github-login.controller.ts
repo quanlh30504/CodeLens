@@ -1,4 +1,6 @@
 import { Controller, Get, Inject, Query, Req, Res } from '@nestjs/common';
+import { SESSION_COOKIE_NAME, SessionService } from './session.service';
+import { SESSION_SERVICE } from './session.guard';
 import type { Request, Response } from 'express';
 import type { AppConfig } from '../config/app-config';
 import { APP_CONFIG } from '../config/config.module';
@@ -15,6 +17,7 @@ export class GithubLoginController {
     @Inject(APP_CONFIG) private readonly config: AppConfig,
     @Inject(OAUTH_STATE_SERVICE) private readonly states: OAuthStateService,
     private readonly login: GithubLoginService,
+    @Inject(SESSION_SERVICE) private readonly sessions: SessionService,
   ) {}
 
   private get secureCookies(): boolean {
@@ -24,6 +27,10 @@ export class GithubLoginController {
   /** Starts sign-in: redirect to GitHub with a single-use state that is also held in a short-lived cookie. */
   @Get('login')
   async start(@Res() res: Response): Promise<void> {
+    return this.startAuthorization(res);
+  }
+
+  async startAuthorization(res: Response): Promise<void> {
     const state = await this.states.create('login');
     res.cookie(LOGIN_STATE_COOKIE, state, {
       httpOnly: true,
@@ -60,6 +67,8 @@ export class GithubLoginController {
     const result = await this.login.complete(code);
     if (!result.ok) return res.redirect(302, `/sign-in?error=${result.reason}`);
 
+    // Signing in again while already signed in ("refresh access") replaces the old session.
+    await this.sessions.destroy(parseCookies(req.headers.cookie)[SESSION_COOKIE_NAME]);
     setSessionCookie(res, result.cookieValue, this.secureCookies);
     return res.redirect(302, '/installations');
   }

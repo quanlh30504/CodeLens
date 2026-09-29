@@ -5,6 +5,7 @@ import { GithubAppClient, GithubRepositoryInfo } from '../github/github-app.clie
 import { GithubError } from '../github/github-errors';
 import { failed, synced, syncing } from '../installations/installation-sync-status';
 import { log } from '../observability/app-logger';
+import { SystemContext } from '../queue/system-context';
 import { PrismaService } from '../tenancy/prisma.service';
 
 /** Spec FR-011: installations are fully supported up to this many repositories. */
@@ -138,6 +139,7 @@ export class SyncService {
     takeOver: { move: Set<bigint>; conflict: Set<bigint> },
   ): Promise<Omit<SyncOutcome, 'status' | 'limitReached'>> {
     const now = new Date();
+    const context = SystemContext.forInstallation(installation);
     const fetchedIds = new Set(fetched.map((r) => BigInt(r.githubRepositoryId)));
     const stored = await tx.repository.findMany({
       where: { OR: [{ installationId: installation.id }, { githubRepositoryId: { in: [...fetchedIds] } }] },
@@ -168,6 +170,7 @@ export class SyncService {
     let markedInaccessible = 0;
     for (const row of stored) {
       if (row.installationId !== installation.id || fetchedIds.has(row.githubRepositoryId)) continue;
+      context.assertOwns(row);
       if (row.status !== 'INACCESSIBLE' || row.reviewEnabled) {
         await tx.repository.update({
           where: { id: row.id },
@@ -195,6 +198,7 @@ export class SyncService {
       };
 
       if (!row) {
+        context.assertWritesTo(installation.organizationId);
         toCreate.push({
           organizationId: installation.organizationId,
           installationId: installation.id,
@@ -210,6 +214,7 @@ export class SyncService {
 
       if (row.installationId !== installation.id) {
         if (takeOver.move.has(githubId)) {
+          context.assertWritesTo(installation.organizationId);
           await tx.repository.update({
             where: { id: row.id },
             data: {
@@ -233,6 +238,7 @@ export class SyncService {
         continue;
       }
 
+      context.assertOwns(row);
       const changed =
         row.owner !== fields.owner ||
         row.name !== fields.name ||
