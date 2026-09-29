@@ -526,7 +526,10 @@ A repository is eligible for review only when `status = ACCESSIBLE`, `review_ena
 is true and its installation `status = ACTIVE`.
 
 `sync_conflict` is true when a second installation also reports a repository still held
-by the first; the first holder keeps it.
+by the first and GitHub confirms the first still has access; the first holder keeps it.
+It is for operator diagnostics only and is never exposed to tenants. When the first holder
+has lost access (a transfer), the row is reassigned to the new organization and installation
+with `review_enabled = false` and the enable fields cleared.
 
 Do not assume the local DB is always the source of truth for GitHub state.
 
