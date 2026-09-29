@@ -1,0 +1,348 @@
+openapi: 3.0.3
+info:
+  title: CodeLens API - Feature 001 (installation and repository onboarding)
+  version: 0.1.0
+  description: |
+    Same-origin API used by the CodeLens web app. Authentication is a session cookie
+    (httpOnly). No GitHub token, private key or secret is ever present in a request or
+    response. All resources are tenant-scoped; a resource outside the caller's
+    organizations answers 404, never 403.
+servers:
+  - url: /api
+security:
+  - session: []
+paths:
+  /auth/github/login:
+    get:
+      summary: Start GitHub sign-in (redirects to GitHub)
+      security: []
+      responses:
+        '302': { description: Redirect to GitHub authorization }
+  /auth/github/callback:
+    get:
+      summary: Complete GitHub sign-in, create or reuse account, set session cookie
+      security: []
+      parameters:
+        - { name: code, in: query, schema: { type: string } }
+        - { name: state, in: query, schema: { type: string } }
+        - { name: error, in: query, schema: { type: string } }
+      responses:
+        '302': { description: Redirect into the app (signed in) or to sign-in with an error code }
+  /auth/logout:
+    post:
+      summary: End the session
+      parameters: [ { $ref: '#/components/parameters/CsrfToken' } ]
+      responses:
+        '204': { description: Signed out }
+  /me:
+    get:
+      summary: Current user and organizations
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Me' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /me/refresh-access:
+    get:
+      summary: Re-check which installations and roles the user has, by sending them through GitHub authorization again
+      description: |
+        Changes nothing by itself (it only redirects), so it is a plain GET. The sign-in callback that
+        follows re-reads installations and roles from GitHub and replaces the session.
+      responses:
+        '302': { description: Redirect to GitHub authorization, then back through the sign-in callback to /installations }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /installations/new:
+    get:
+      summary: Start installation of the CodeLens GitHub App (redirects to GitHub)
+      responses:
+        '302': { description: Redirect to GitHub's installation page with a single-use state }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /installations/callback:
+    get:
+      summary: GitHub setup callback; links an installation only after GitHub confirms the user can access it
+      parameters:
+        - name: installation_id
+          in: query
+          required: false
+          description: Sent by GitHub on return from installation. Absent when resuming after the user confirmed access with GitHub (it is then held server-side with the state).
+          schema: { type: integer, format: int64 }
+        - { name: setup_action, in: query, schema: { type: string } }
+        - { name: state, in: query, required: true, schema: { type: string } }
+        - { name: error, in: query, required: false, description: Sent by GitHub when the user declined authorization, schema: { type: string } }
+        - name: code
+          in: query
+          required: false
+          description: |
+            GitHub user-authorization code, sent when the app is configured to request user
+            authorization during installation. When present it is exchanged for a short-lived
+            user credential used only to confirm the caller can access installation_id.
+            When absent the caller is sent through the sign-in authorization flow and returned
+            here before anything is linked.
+          schema: { type: string }
+      responses:
+        '302': { description: Redirect to the installation page (may show setting-up state), or to GitHub authorization to confirm access when code is absent }
+        '400': { $ref: '#/components/responses/InvalidState' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /installations:
+    get:
+      summary: Installations in the caller's organizations
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Installation' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+  /installations/{installationId}:
+    get:
+      summary: One installation with its organization
+      parameters: [ { $ref: '#/components/parameters/InstallationId' } ]
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Installation' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /installations/{installationId}/repositories:
+    get:
+      summary: Repositories reported by the installation
+      parameters:
+        - { $ref: '#/components/parameters/InstallationId' }
+        - { name: q, in: query, description: Case-insensitive name filter, schema: { type: string, maxLength: 100 } }
+        - { name: state, in: query, schema: { $ref: '#/components/schemas/RepositoryState' } }
+        - { name: cursor, in: query, schema: { type: string } }
+        - { name: limit, in: query, schema: { type: integer, minimum: 1, maximum: 100, default: 50 } }
+      responses:
+        '200':
+          description: OK
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { $ref: '#/components/schemas/Repository' }
+                  nextCursor: { type: string, nullable: true }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '404': { $ref: '#/components/responses/NotFound' }
+  /installations/{installationId}/sync:
+    post:
+      summary: Re-run repository synchronization (OWNER only); safe to repeat
+      parameters:
+        - { $ref: '#/components/parameters/InstallationId' }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      responses:
+        '202':
+          description: Sync queued or already queued
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/SyncAccepted' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: The installation is not active on GitHub
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/RoleUnverifiable' }
+  /repositories/{repositoryId}/review-enabled:
+    put:
+      summary: Enable or disable CodeLens review for a repository (OWNER only); idempotent
+      parameters:
+        - { name: repositoryId, in: path, required: true, schema: { type: string, format: uuid } }
+        - { $ref: '#/components/parameters/CsrfToken' }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [enabled]
+              additionalProperties: false
+              properties:
+                enabled: { type: boolean }
+      responses:
+        '200':
+          description: Resulting state
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Repository' }
+        '401': { $ref: '#/components/responses/Unauthenticated' }
+        '403': { $ref: '#/components/responses/Forbidden' }
+        '404': { $ref: '#/components/responses/NotFound' }
+        '409':
+          description: Repository is inaccessible and cannot be enabled
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '503': { $ref: '#/components/responses/RoleUnverifiable' }
+  /webhooks/github:
+    post:
+      summary: GitHub webhook receiver (see webhooks.md)
+      security: []
+      description: |
+        Authenticated only by the HMAC signature header, not by a session.
+        Raw body is verified before parsing.
+      parameters:
+        - { name: X-Hub-Signature-256, in: header, required: true, schema: { type: string } }
+        - { name: X-GitHub-Event, in: header, required: true, schema: { type: string } }
+        - { name: X-GitHub-Delivery, in: header, required: true, schema: { type: string } }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object }
+      responses:
+        '202':
+          description: Accepted for processing, or a repeat delivery already accepted. Every authentic delivery gets this same answer.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [accepted] }
+        '400':
+          description: Malformed headers or body (only after the signature was verified)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Missing or invalid signature; nothing changed. The body never says why.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+components:
+  securitySchemes:
+    session:
+      type: apiKey
+      in: cookie
+      name: codelens_session
+  parameters:
+    InstallationId:
+      name: installationId
+      in: path
+      required: true
+      description: CodeLens installation UUID (not the GitHub installation ID)
+      schema: { type: string, format: uuid }
+    CsrfToken:
+      name: X-CSRF-Token
+      in: header
+      required: true
+      schema: { type: string }
+  responses:
+    Unauthenticated:
+      description: No valid session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    Forbidden:
+      description: Caller lacks the OWNER role, or code REAUTH_REQUIRED when the last GitHub role confirmation is older than 10 minutes (client re-authorizes with GitHub, then retries)
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NotFound:
+      description: Resource does not exist or is outside the caller's organizations
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    RoleUnverifiable:
+      description: GitHub could not confirm the caller's role (code ROLE_UNVERIFIABLE); nothing was changed and no stored role was trusted
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    InvalidState:
+      description: State value missing, expired, reused or not bound to this session
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+  schemas:
+    Error:
+      type: object
+      required: [code, message]
+      properties:
+        code: { type: string }
+        message: { type: string }
+    Me:
+      type: object
+      required: [id, login, csrfToken, organizations]
+      properties:
+        id: { type: string, format: uuid }
+        login: { type: string }
+        avatarUrl: { type: string, nullable: true }
+        csrfToken:
+          type: string
+          description: Per-session token to send as X-CSRF-Token on state-changing requests
+        organizations:
+          type: array
+          items:
+            type: object
+            required: [id, login, role]
+            properties:
+              id: { type: string, format: uuid }
+              login: { type: string }
+              role: { type: string, enum: [OWNER, MEMBER] }
+    RepositoryState:
+      type: string
+      enum: [ENABLED, DISABLED, INACCESSIBLE]
+      description: Derived from accessibility and the review-enabled flag
+    Installation:
+      type: object
+      required: [id, status, syncStatus, displayState, organization, repositorySelection, githubSettingsUrl]
+      properties:
+        id: { type: string, format: uuid }
+        status: { type: string, enum: [ACTIVE, SUSPENDED, REMOVED] }
+        syncStatus: { type: string, enum: [PENDING, SYNCING, SYNCED, FAILED] }
+        syncErrorCode:
+          type: string
+          nullable: true
+          enum: [GITHUB_UNAVAILABLE, GITHUB_RATE_LIMITED, ACCESS_REVOKED, OTHER, REPOSITORY_LIMIT_EXCEEDED, null]
+        displayState:
+          type: string
+          enum: [SETTING_UP, ACTIVE, SYNC_FAILED, LIMIT_REACHED, SUSPENDED, REMOVED]
+          description: State shown to the user (spec FR-041); derivation in data-model.md
+        repositorySelection: { type: string, enum: [ALL, SELECTED] }
+        installedAt: { type: string, format: date-time }
+        lastSyncedAt: { type: string, format: date-time, nullable: true }
+        repositoryCount: { type: integer }
+        organization:
+          type: object
+          required: [id, login, accountType]
+          properties:
+            id: { type: string, format: uuid }
+            login: { type: string }
+            accountType: { type: string, enum: [ORGANIZATION, USER] }
+        githubSettingsUrl:
+          type: string
+          description: GitHub page where an owner changes which repositories the app can access (CodeLens has no such control, FR-006)
+        canManage: { type: boolean, description: True when the caller is OWNER (spec FR-040); the management guard still requires a confirmation no older than 10 minutes }
+    Repository:
+      type: object
+      required: [id, fullName, private, state]
+      properties:
+        id: { type: string, format: uuid }
+        fullName: { type: string }
+        defaultBranch: { type: string }
+        private: { type: boolean }
+        state: { $ref: '#/components/schemas/RepositoryState' }
+        enabledAt: { type: string, format: date-time, nullable: true }
+        lastSyncedAt: { type: string, format: date-time, nullable: true }
+    SyncAccepted:
+      type: object
+      required: [status]
+      properties:
+        status: { type: string, enum: [QUEUED, ALREADY_QUEUED] }

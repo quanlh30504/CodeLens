@@ -1,0 +1,150 @@
+// Tables used by Feature 001. Source of truth: docs/architecture/database-erd.md
+// (baseline v0.1 plus Amendment 1). Constraints that Prisma cannot express
+// (check constraints, partial rules) live in the SQL migration.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  githubUserId String    @unique @map("github_user_id") @db.VarChar(64)
+  login        String    @db.VarChar(255)
+  email        String?   @db.VarChar(320)
+  avatarUrl    String?   @map("avatar_url") @db.VarChar(2048)
+  createdAt    DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt    DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+  lastLoginAt  DateTime? @map("last_login_at") @db.Timestamptz(6)
+
+  memberships         OrganizationMember[]
+  auditLogs           AuditLog[]
+  enabledRepositories Repository[]
+
+  @@map("users")
+}
+
+model Organization {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  githubOrgId String   @unique @map("github_org_id") @db.VarChar(64)
+  accountType String   @map("account_type") @db.VarChar(16)
+  login       String   @db.VarChar(255)
+  name        String?  @db.VarChar(255)
+  avatarUrl   String?  @map("avatar_url") @db.VarChar(2048)
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt   DateTime @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  members       OrganizationMember[]
+  installations GithubInstallation[]
+  repositories  Repository[]
+  auditLogs     AuditLog[]
+
+  @@map("organizations")
+}
+
+model OrganizationMember {
+  id             String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  role           String    @db.VarChar(16)
+  roleVerifiedAt DateTime? @map("role_verified_at") @db.Timestamptz(6)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt      DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User         @relation(fields: [userId], references: [id])
+
+  @@unique([organizationId, userId])
+  @@index([userId])
+  @@map("organization_members")
+}
+
+model GithubInstallation {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId       String    @map("organization_id") @db.Uuid
+  githubInstallationId BigInt    @unique @map("github_installation_id")
+  accountType          String    @map("account_type") @db.VarChar(16)
+  accountLogin         String    @map("account_login") @db.VarChar(255)
+  status               String    @db.VarChar(16)
+  repositorySelection  String    @default("SELECTED") @map("repository_selection") @db.VarChar(16)
+  syncStatus           String    @default("PENDING") @map("sync_status") @db.VarChar(16)
+  syncErrorCode        String?   @map("sync_error_code") @db.VarChar(64)
+  lastSyncedAt         DateTime? @map("last_synced_at") @db.Timestamptz(6)
+  installedAt          DateTime  @map("installed_at") @db.Timestamptz(6)
+  suspendedAt          DateTime? @map("suspended_at") @db.Timestamptz(6)
+  removedAt            DateTime? @map("removed_at") @db.Timestamptz(6)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt            DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  repositories Repository[]
+
+  @@index([organizationId])
+  @@map("github_installations")
+}
+
+model Repository {
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId     String    @map("organization_id") @db.Uuid
+  installationId     String    @map("installation_id") @db.Uuid
+  githubRepositoryId BigInt    @unique @map("github_repository_id")
+  owner              String    @db.VarChar(255)
+  name               String    @db.VarChar(255)
+  fullName           String    @unique @map("full_name") @db.VarChar(512)
+  defaultBranch      String?   @map("default_branch") @db.VarChar(255)
+  private            Boolean   @default(true)
+  status             String    @default("ACCESSIBLE") @db.VarChar(16)
+  reviewEnabled      Boolean   @default(false) @map("review_enabled")
+  enabledAt          DateTime? @map("enabled_at") @db.Timestamptz(6)
+  enabledByUserId    String?   @map("enabled_by_user_id") @db.Uuid
+  syncConflict       Boolean   @default(false) @map("sync_conflict")
+  lastSyncedAt       DateTime? @map("last_synced_at") @db.Timestamptz(6)
+  createdAt          DateTime  @default(now()) @map("created_at") @db.Timestamptz(6)
+  updatedAt          DateTime  @default(now()) @updatedAt @map("updated_at") @db.Timestamptz(6)
+
+  organization Organization       @relation(fields: [organizationId], references: [id])
+  installation GithubInstallation @relation(fields: [installationId], references: [id])
+  enabledBy    User?              @relation(fields: [enabledByUserId], references: [id])
+
+  @@index([organizationId])
+  @@index([installationId, status])
+  @@map("repositories")
+}
+
+model WebhookDelivery {
+  id                   String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  deliveryGuid         String    @unique @map("delivery_guid") @db.VarChar(64)
+  event                String    @db.VarChar(64)
+  action               String?   @db.VarChar(64)
+  githubInstallationId BigInt?   @map("github_installation_id")
+  payloadSha256        String    @map("payload_sha256") @db.VarChar(64)
+  status               String    @db.VarChar(16)
+  errorCode            String?   @map("error_code") @db.VarChar(64)
+  receivedAt           DateTime  @default(now()) @map("received_at") @db.Timestamptz(6)
+  processedAt          DateTime? @map("processed_at") @db.Timestamptz(6)
+
+  @@index([githubInstallationId, receivedAt])
+  @@map("webhook_deliveries")
+}
+
+model AuditLog {
+  id             String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  organizationId String   @map("organization_id") @db.Uuid
+  userId         String?  @map("user_id") @db.Uuid
+  action         String   @db.VarChar(64)
+  resourceType   String   @map("resource_type") @db.VarChar(64)
+  resourceId     String?  @map("resource_id") @db.Uuid
+  metadata       Json?
+  ipHash         String?  @map("ip_hash") @db.VarChar(64)
+  createdAt      DateTime @default(now()) @map("created_at") @db.Timestamptz(6)
+
+  organization Organization @relation(fields: [organizationId], references: [id])
+  user         User?        @relation(fields: [userId], references: [id])
+
+  @@index([organizationId, createdAt])
+  @@map("audit_logs")
+}

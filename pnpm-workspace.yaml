@@ -1,0 +1,9 @@
+packages:
+  - backend
+  - frontend
+
+# Only these packages may run install scripts (Prisma downloads its engines).
+onlyBuiltDependencies:
+  - prisma
+  - "@prisma/client"
+  - "@prisma/engines"
