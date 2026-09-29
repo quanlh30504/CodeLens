@@ -28,3 +28,4 @@ Thumbs.db
 # Test artifacts
 playwright-report/
 test-results/
+frontend/next-env.d.ts
