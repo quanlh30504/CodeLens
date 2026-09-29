@@ -61,6 +61,16 @@ export class FakeGithub {
   orgRoles = new Map<string, string>();
   requests: RecordedRequest[] = [];
   forceDown = false;
+  /** Browser flows (used by the end-to-end run): who is signed in at github.com, and what happens on install. */
+  browser = {
+    userId: 0,
+    declines: false,
+    pendingInstallationId: 0,
+    /** Where GitHub sends the browser after installation, for example http://localhost:8080/api/installations/callback */
+    setupUrl: '',
+    /** When false the installation return has no authorization code. */
+    sendCode: true,
+  };
   /** Artificial latency for matching requests, to prove slow GitHub work never delays a webhook reply. */
   latencies: { match: RegExp; ms: number }[] = [];
 
@@ -163,6 +173,9 @@ export class FakeGithub {
     }
 
     try {
+      if (method === 'GET' && path === '/login/oauth/authorize') return this.browserAuthorize(res, url);
+      const installPage = path.match(/^\/apps\/([^/]+)\/installations\/new$/);
+      if (method === 'GET' && installPage) return this.browserInstall(res, url);
       if (method === 'POST' && path === '/login/oauth/access_token') return await this.exchange(req, res);
       if (method === 'GET' && path === '/user') return this.userRoute(res, bearer, (u) => ({ id: u.id, login: u.login, email: u.email ?? null, avatar_url: null }));
       if (method === 'GET' && path === '/user/installations') return this.userInstallations(res, bearer);
@@ -178,6 +191,30 @@ export class FakeGithub {
     } catch {
       return this.send(res, 500, { message: 'fake error' });
     }
+  }
+
+  /** github.com's authorization page: sends the browser back with a one-time code, or with an error. */
+  private browserAuthorize(res: ServerResponse, url: URL): void {
+    const redirect = url.searchParams.get('redirect_uri');
+    const state = url.searchParams.get('state') ?? '';
+    if (!redirect) return this.send(res, 400, { message: 'redirect_uri required' });
+    const target = new URL(redirect);
+    target.searchParams.set('state', state);
+    if (this.browser.declines) target.searchParams.set('error', 'access_denied');
+    else target.searchParams.set('code', this.authCode(this.browser.userId));
+    res.writeHead(302, { location: target.toString() });
+    res.end();
+  }
+
+  /** github.com's installation page: the person installs, and GitHub sends the browser to the setup URL. */
+  private browserInstall(res: ServerResponse, url: URL): void {
+    const target = new URL(this.browser.setupUrl);
+    target.searchParams.set('installation_id', String(this.browser.pendingInstallationId));
+    target.searchParams.set('setup_action', 'install');
+    target.searchParams.set('state', url.searchParams.get('state') ?? '');
+    if (this.browser.sendCode) target.searchParams.set('code', this.authCode(this.browser.userId));
+    res.writeHead(302, { location: target.toString() });
+    res.end();
   }
 
   private classify(bearer: string): RecordedRequest['auth'] {

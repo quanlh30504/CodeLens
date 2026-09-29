@@ -317,12 +317,12 @@ End every commit message with the attribution line required in this environment.
 
 **Purpose**: End-to-end validation and hardening across stories.
 
-- [ ] T105 [P] Add Playwright journeys for sign-in, install, view repositories, enable/disable, and uninstall against the fake GitHub in `frontend/tests/e2e/onboarding.spec.ts`; include a timed first-visit-to-repositories run that must finish in under 5 minutes (SC-001)
-- [ ] T106 [P] Add a test that fails when any response body, HTML page, or log line in the acceptance suite contains a configured secret value or private-key marker (SC-010) in `backend/test/integration/secret-leak-scan.spec.ts`
-- [ ] T107 [P] Add a test that fails if the GitHub client class exposes any write method or if any test double receives a non-GET call to repository, workflow, settings, issue or pull-request endpoints (FR-032) in `backend/test/unit/github-readonly.spec.ts`; also assert the API exposes no route or UI action that grants or widens repository access other than redirecting to GitHub's installation page (FR-006)
+- [X] T105 [P] Add Playwright journeys for sign-in, install, view repositories, enable/disable, and uninstall against the fake GitHub in `frontend/tests/e2e/onboarding.spec.ts`; include a timed first-visit-to-repositories run that must finish in under 5 minutes (SC-001)
+- [X] T106 [P] Add a test that fails when any response body, HTML page, or log line in the acceptance suite contains a configured secret value or private-key marker (SC-010) in `backend/test/integration/secret-leak-scan.spec.ts`
+- [X] T107 [P] Add a test that fails if the GitHub client class exposes any write method or if any test double receives a non-GET call to repository, workflow, settings, issue or pull-request endpoints (FR-032) in `backend/test/unit/github-readonly.spec.ts`; also assert the API exposes no route or UI action that grants or widens repository access other than redirecting to GitHub's installation page (FR-006)
 - [ ] T108 Run every scenario in `specs/001-github-app-onboarding/quickstart.md` section A and record results in `specs/001-github-app-onboarding/quickstart.md`
-- [ ] T109 Add metrics counters (deliveries received, rejected, duplicate; sync duration; sync failures) and a startup log line without secret values, in `backend/src/observability/metrics.ts`
-- [ ] T110 [P] Document deployment and secret provisioning (private key mounted read-only, mode 0400, outside the build context) in `deploy/README.md`; state the log retention of at least 30 days for webhook rejection records (US5 scenario 1)
+- [X] T109 Add metrics counters (deliveries received, rejected, duplicate; sync duration; sync failures) and a startup log line without secret values, in `backend/src/observability/metrics.ts`
+- [X] T110 [P] Document deployment and secret provisioning (private key mounted read-only, mode 0400, outside the build context) in `deploy/README.md`; state the log retention of at least 30 days for webhook rejection records (US5 scenario 1)
 - [ ] T111 [MANUAL] Walk through `specs/001-github-app-onboarding/checklists/requirements-quality.md` with the reviewer and record outcomes inline; fix spec gaps found before release
 - [ ] T112 [MANUAL] Run `/speckit-analyze` for cross-artifact consistency and resolve findings
 
