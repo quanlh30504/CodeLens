@@ -198,9 +198,25 @@ paths:
           application/json:
             schema: { type: object }
       responses:
-        '202': { description: Accepted for processing, or a repeat delivery already accepted }
-        '400': { description: Malformed headers or body (after valid signature) }
-        '401': { description: Missing or invalid signature; nothing changed }
+        '202':
+          description: Accepted for processing, or a repeat delivery already accepted. Every authentic delivery gets this same answer.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status]
+                properties:
+                  status: { type: string, enum: [accepted] }
+        '400':
+          description: Malformed headers or body (only after the signature was verified)
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
+        '401':
+          description: Missing or invalid signature; nothing changed. The body never says why.
+          content:
+            application/json:
+              schema: { $ref: '#/components/schemas/Error' }
 components:
   securitySchemes:
     session:

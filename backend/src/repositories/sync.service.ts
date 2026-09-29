@@ -4,13 +4,12 @@ import { AuditService } from '../audit/audit.service';
 import { GithubAppClient, GithubRepositoryInfo } from '../github/github-app.client';
 import { GithubError } from '../github/github-errors';
 import { failed, synced, syncing } from '../installations/installation-sync-status';
-import { createLogger } from '../observability/logger';
+import { log } from '../observability/app-logger';
 import { PrismaService } from '../tenancy/prisma.service';
 
 /** Spec FR-011: installations are fully supported up to this many repositories. */
 export const REPOSITORY_LIMIT = 5000;
 
-const logger = createLogger({ level: process.env.LOG_LEVEL ?? 'info' });
 
 export interface SyncOutcome {
   status: 'SYNCED' | 'SKIPPED';
@@ -229,7 +228,7 @@ export class SyncService {
           reassigned += 1;
         } else if (!row.syncConflict) {
           await tx.repository.update({ where: { id: row.id }, data: { syncConflict: true } });
-          logger.warn({ githubRepositoryId: githubId.toString() }, 'repository reported by two installations');
+          log().warn({ githubRepositoryId: githubId.toString() }, 'repository reported by two installations');
         }
         continue;
       }

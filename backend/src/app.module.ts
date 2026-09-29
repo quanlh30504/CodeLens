@@ -3,6 +3,7 @@ import { APP_FILTER } from '@nestjs/core';
 import { AuthModule } from './auth/auth.module';
 import { ConfigModule, ConfigModuleOptions } from './config/config.module';
 import { GithubModule } from './github/github.module';
+import { WebhookModule } from './github/webhook/webhook.module';
 import { InstallationsModule } from './installations/installations.module';
 import { ErrorFilter } from './observability/error.filter';
 import { QueueModule } from './queue/queue.module';
@@ -13,7 +14,7 @@ export class AppModule {
   static forRoot(options: ConfigModuleOptions = {}): DynamicModule {
     return {
       module: AppModule,
-      imports: [ConfigModule.forRoot(options), TenancyModule, AuthModule, GithubModule, QueueModule, InstallationsModule],
+      imports: [ConfigModule.forRoot(options), TenancyModule, AuthModule, GithubModule, WebhookModule, QueueModule, InstallationsModule],
       providers: [{ provide: APP_FILTER, useClass: ErrorFilter }],
     };
   }

@@ -120,7 +120,7 @@ export function startAppWorker(app: INestApplication, infra: Infra): { stop(): P
   const reconcile = app.get(ReconcileProcessor);
   const sync = app.get(SyncProcessor);
   return startWorker(infra, {
-    reconcile: (data) => reconcile.handle(data),
+    reconcile: (data, jobId, info) => reconcile.handle(data, jobId, info),
     sync: (data, jobId, info) => sync.handle(data, jobId, info),
   });
 }

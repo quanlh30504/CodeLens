@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { GithubError } from '../github/github-errors';
+import { WebhookDeliveriesService } from '../github/webhook/webhook-deliveries.service';
 import type { AttemptInfo } from '../queue/worker-runner';
 import { SyncService } from './sync.service';
 
@@ -10,15 +11,20 @@ import { SyncService } from './sync.service';
  */
 @Injectable()
 export class SyncProcessor {
-  constructor(private readonly sync: SyncService) {}
+  constructor(
+    private readonly sync: SyncService,
+    private readonly deliveries: WebhookDeliveriesService,
+  ) {}
 
-  async handle(data: { githubInstallationId: number }, _jobId: string, info: AttemptInfo): Promise<void> {
+  async handle(data: { githubInstallationId: number; deliveryGuid?: string }, _jobId: string, info: AttemptInfo): Promise<void> {
     try {
       await this.sync.sync(data.githubInstallationId);
+      await this.deliveries.markProcessed(data.deliveryGuid);
     } catch (error) {
       const githubError = error instanceof GithubError ? error : new GithubError('OTHER', 'Synchronization failed');
       if (info.attempt >= info.maxAttempts) {
         await this.sync.recordFailure(data.githubInstallationId, githubError);
+        await this.deliveries.markFailed(data.deliveryGuid, githubError.code);
       }
       throw githubError;
     }

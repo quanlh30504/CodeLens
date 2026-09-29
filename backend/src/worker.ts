@@ -37,7 +37,7 @@ async function main(): Promise<void> {
   const sync = context.get(SyncProcessor);
   const runner = new WorkerRunner(createBullConnection(config.redisUrl), logger);
   runner.start({
-    reconcile: (data) => reconcile.handle(data),
+    reconcile: (data, jobId, info) => reconcile.handle(data, jobId, info),
     sync: (data, jobId, info) => sync.handle(data, jobId, info),
   });
   logger.info('worker started');

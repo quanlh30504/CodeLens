@@ -36,12 +36,16 @@ const account = (id: number, login: string, type: 'Organization' | 'User' = 'Org
 });
 
 export const fixtures = {
-  installationCreated: (installationId: number, accountId = 1000, login = 'acme') =>
-    signedWebhook('installation', {
-      action: 'created',
-      installation: { id: installationId, account: account(accountId, login) },
-      sender: { id: 1, login: 'octo' },
-    }),
+  installationCreated: (installationId: number, accountId = 1000, login = 'acme', deliveryId?: string) =>
+    signedWebhook(
+      'installation',
+      {
+        action: 'created',
+        installation: { id: installationId, account: account(accountId, login) },
+        sender: { id: 1, login: 'octo' },
+      },
+      { deliveryId },
+    ),
   installationDeleted: (installationId: number, accountId = 1000, login = 'acme') =>
     signedWebhook('installation', {
       action: 'deleted',

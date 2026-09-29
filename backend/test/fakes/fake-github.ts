@@ -61,6 +61,8 @@ export class FakeGithub {
   orgRoles = new Map<string, string>();
   requests: RecordedRequest[] = [];
   forceDown = false;
+  /** Artificial latency for matching requests, to prove slow GitHub work never delays a webhook reply. */
+  latencies: { match: RegExp; ms: number }[] = [];
 
   private failures: Failure[] = [];
   private codes = new Map<string, number>(); // one-time code -> user id
@@ -131,6 +133,7 @@ export class FakeGithub {
   }
 
   clearFailures(): void {
+    this.latencies = [];
     this.failures = [];
     this.forceDown = false;
   }
@@ -150,6 +153,8 @@ export class FakeGithub {
     const kind = this.classify(bearer);
     this.requests.push({ method, path: path + url.search, auth: kind });
 
+    const latency = this.latencies.find((l) => l.match.test(path + url.search));
+    if (latency) await new Promise((resolve) => setTimeout(resolve, latency.ms));
     if (this.forceDown) return this.send(res, 503, { message: 'down' });
     const failure = this.failures.find((f) => f.remaining > 0 && f.match.test(path + url.search));
     if (failure) {

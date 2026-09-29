@@ -37,12 +37,12 @@ export class QueueService {
     this.sync = new Queue<InstallationJobData>(SYNC_QUEUE, { connection, defaultJobOptions });
   }
 
-  enqueueReconcile(githubInstallationId: number): Promise<EnqueueResult> {
-    return this.enqueue(this.reconcile, reconcileJobId(githubInstallationId), { githubInstallationId });
+  enqueueReconcile(githubInstallationId: number, deliveryGuid?: string): Promise<EnqueueResult> {
+    return this.enqueue(this.reconcile, reconcileJobId(githubInstallationId), { githubInstallationId, deliveryGuid });
   }
 
-  enqueueSync(githubInstallationId: number): Promise<EnqueueResult> {
-    return this.enqueue(this.sync, syncJobId(githubInstallationId), { githubInstallationId });
+  enqueueSync(githubInstallationId: number, deliveryGuid?: string): Promise<EnqueueResult> {
+    return this.enqueue(this.sync, syncJobId(githubInstallationId), { githubInstallationId, deliveryGuid });
   }
 
   async close(): Promise<void> {

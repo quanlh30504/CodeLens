@@ -3,6 +3,8 @@ export const SYNC_QUEUE = 'sync-repositories';
 
 export interface InstallationJobData {
   githubInstallationId: number;
+  /** Webhook delivery that caused this job, so its record can be marked processed or failed. */
+  deliveryGuid?: string;
 }
 
 /**
