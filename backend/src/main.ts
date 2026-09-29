@@ -4,6 +4,8 @@ import { createApp } from './app';
 import { GithubAppClient } from './github/github-app.client';
 import { checkAppPermissionsAtStartup } from './github/permission-check';
 import { createLogger } from './observability/logger';
+import { Metrics } from './observability/metrics';
+import { startMetricsReporter } from './observability/metrics-reporter';
 
 /** Refuses to start on missing configuration or secrets, or a disallowed GitHub App permission. */
 async function main(): Promise<void> {
@@ -21,7 +23,9 @@ async function main(): Promise<void> {
 
   const app = await createApp({ config, secrets });
   await app.listen(config.port, '0.0.0.0');
-  logger.info({ port: config.port }, 'api listening');
+  startMetricsReporter(app.get(Metrics), logger);
+  // Startup line: identifiers and settings only, never a secret value.
+  logger.info({ port: config.port, nodeEnv: config.nodeEnv, githubAppId: config.githubAppId }, 'api listening');
 }
 
 main().catch((error: unknown) => {

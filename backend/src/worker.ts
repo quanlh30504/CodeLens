@@ -7,6 +7,8 @@ import { GithubAppClient } from './github/github-app.client';
 import { checkAppPermissionsAtStartup } from './github/permission-check';
 import { ReconcileProcessor } from './installations/reconcile.processor';
 import { createLogger } from './observability/logger';
+import { Metrics } from './observability/metrics';
+import { startMetricsReporter } from './observability/metrics-reporter';
 import { createBullConnection } from './queue/redis';
 import { WorkerRunner } from './queue/worker-runner';
 import { SyncProcessor } from './repositories/sync.processor';
@@ -40,7 +42,8 @@ async function main(): Promise<void> {
     reconcile: (data, jobId, info) => reconcile.handle(data, jobId, info),
     sync: (data, jobId, info) => sync.handle(data, jobId, info),
   });
-  logger.info('worker started');
+  startMetricsReporter(context.get(Metrics), logger);
+  logger.info({ nodeEnv: config.nodeEnv, githubAppId: config.githubAppId }, 'worker started');
 
   const shutdown = async () => {
     await runner.stop();

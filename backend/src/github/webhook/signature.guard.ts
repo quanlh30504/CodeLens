@@ -3,7 +3,7 @@ import { CanActivate, ExecutionContext, Inject, Injectable, UnauthorizedExceptio
 import type { Request } from 'express';
 import { SECRET_PROVIDER } from '../../config/config.module';
 import type { SecretProvider } from '../../config/secret-provider';
-import { Metrics } from '../../observability/metrics';
+import { METRIC, Metrics } from '../../observability/metrics';
 import { log } from '../../observability/app-logger';
 import { rawBodyOf } from './raw-body.middleware';
 
@@ -45,7 +45,7 @@ export class SignatureGuard implements CanActivate {
   }
 
   private reject(request: Request, reason: string): never {
-    this.metrics.increment('webhook.rejected');
+    this.metrics.increment(METRIC.webhookRejected);
     const deliveryId = request.headers['x-github-delivery'];
     log().warn(
       {

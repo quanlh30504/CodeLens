@@ -6,6 +6,7 @@ import { GithubError } from '../github/github-errors';
 import { failed, synced, syncing } from '../installations/installation-sync-status';
 import { log } from '../observability/app-logger';
 import { SystemContext } from '../queue/system-context';
+import { METRIC, Metrics } from '../observability/metrics';
 import { PrismaService } from '../tenancy/prisma.service';
 
 /** Spec FR-011: installations are fully supported up to this many repositories. */
@@ -37,10 +38,12 @@ export class SyncService {
     private readonly prisma: PrismaService,
     private readonly github: GithubAppClient,
     private readonly audit: AuditService,
+    private readonly metrics: Metrics,
   ) {}
 
   /** Runs one synchronization. Throws GithubError on failure after recording nothing but the status. */
   async sync(githubInstallationId: number): Promise<SyncOutcome> {
+    const startedAt = Date.now();
     const id = BigInt(githubInstallationId);
     const installation = await this.prisma.githubInstallation.findUnique({ where: { githubInstallationId: id } });
     if (!installation || installation.status !== 'ACTIVE') {
@@ -56,22 +59,30 @@ export class SyncService {
     );
     const takeOver = await this.decideTakeOvers(installation, fetched);
 
-    return this.prisma.$transaction(
+    const outcome = await this.prisma.$transaction(
       async (tx) => {
         await tx.$executeRaw`SELECT pg_advisory_xact_lock(${id}::bigint)`;
-        const outcome = await this.apply(tx, installation, fetched, takeOver);
+        const applied = await this.apply(tx, installation, fetched, takeOver);
         await tx.githubInstallation.update({
           where: { id: installation.id },
           data: synced(truncated, new Date()),
         });
-        return { ...outcome, status: 'SYNCED' as const, limitReached: truncated };
+        return { ...applied, status: 'SYNCED' as const, limitReached: truncated };
       },
       { timeout: 120_000, maxWait: 30_000 },
     );
+    this.metrics.increment(METRIC.syncCompleted);
+    this.metrics.observe(METRIC.syncDurationMs, Date.now() - startedAt);
+    log().info(
+      { githubInstallationId, repositories: fetched.length, created: outcome.created, updated: outcome.updated, durationMs: Date.now() - startedAt },
+      'repository synchronization finished',
+    );
+    return outcome;
   }
 
   /** Records the final failure of a synchronization (called after the last retry). */
   async recordFailure(githubInstallationId: number, error: GithubError): Promise<void> {
+    this.metrics.increment(METRIC.syncFailed);
     const installation = await this.prisma.githubInstallation.findUnique({
       where: { githubInstallationId: BigInt(githubInstallationId) },
     });

@@ -33,3 +33,14 @@ export class Metrics {
     return { counters: Object.fromEntries(this.counters), timings };
   }
 }
+
+/** Names used across the feature, so dashboards and tests agree on them. */
+export const METRIC = {
+  webhookReceived: 'webhook.received',
+  webhookRejected: 'webhook.rejected',
+  webhookDuplicate: 'webhook.duplicate',
+  webhookAckMs: 'webhook.ack_ms',
+  syncCompleted: 'sync.completed',
+  syncFailed: 'sync.failed',
+  syncDurationMs: 'sync.duration_ms',
+} as const;

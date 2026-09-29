@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { BadRequestException, Controller, HttpCode, Post, Req, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
-import { Metrics } from '../../observability/metrics';
+import { METRIC, Metrics } from '../../observability/metrics';
 import { log } from '../../observability/app-logger';
 import { QueueService } from '../../queue/queue.service';
 import { actionOf, installationIdOf, routeEvent } from './event-router';
@@ -58,11 +58,11 @@ export class WebhookController {
     });
 
     if (outcome === 'DUPLICATE') {
-      this.metrics.increment('webhook.duplicate');
+      this.metrics.increment(METRIC.webhookDuplicate);
       return ACCEPTED;
     }
 
-    this.metrics.increment('webhook.received');
+    this.metrics.increment(METRIC.webhookReceived);
     const routing = routeEvent(event, payload);
     if (routing.kind === 'ignore') {
       await this.deliveries.markIgnored(deliveryId, routing.reason);
@@ -76,7 +76,7 @@ export class WebhookController {
       if (result === 'ALREADY_QUEUED') await this.deliveries.markProcessed(deliveryId);
     }
 
-    this.metrics.observe('webhook.ack_ms', Date.now() - started);
+    this.metrics.observe(METRIC.webhookAckMs, Date.now() - started);
     log().info({ deliveryId, githubInstallationId, event, routing: routing.kind }, 'webhook accepted');
     return ACCEPTED;
   }
