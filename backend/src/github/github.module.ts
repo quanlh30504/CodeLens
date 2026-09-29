@@ -3,6 +3,7 @@ import { APP_CONFIG, SECRET_PROVIDER } from '../config/config.module';
 import type { AppConfig } from '../config/app-config';
 import type { SecretProvider } from '../config/secret-provider';
 import { GithubAppClient } from './github-app.client';
+import { GithubUserClient } from './github-user.client';
 
 @Global()
 @Module({
@@ -17,7 +18,18 @@ import { GithubAppClient } from './github-app.client';
           privateKey: () => secrets.githubAppPrivateKey(),
         }),
     },
+    {
+      provide: GithubUserClient,
+      inject: [APP_CONFIG, SECRET_PROVIDER],
+      useFactory: (config: AppConfig, secrets: SecretProvider) =>
+        new GithubUserClient({
+          apiBaseUrl: config.githubApiBaseUrl,
+          webBaseUrl: config.githubWebBaseUrl,
+          clientId: config.githubAppClientId,
+          clientSecret: () => secrets.githubClientSecret(),
+        }),
+    },
   ],
-  exports: [GithubAppClient],
+  exports: [GithubAppClient, GithubUserClient],
 })
 export class GithubModule {}

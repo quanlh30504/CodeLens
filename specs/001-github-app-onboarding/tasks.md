@@ -157,17 +157,17 @@ End every commit message with the attribution line required in this environment.
 
 ### Tests for User Story 1
 
-- [ ] T037 [P] [US1] Contract test for `/auth/github/login`, `/auth/github/callback`, `/auth/logout`, `/me` against `contracts/api.openapi.yaml` in `backend/test/contract/auth.contract.spec.ts` [FR-001, FR-004]
-- [ ] T038 [P] [US1] Integration test: first sign-in creates one user; second reuses it; renamed login updates the same row; denied/cancelled sign-in creates nothing and returns the error redirect; unauthenticated requests get 401 with no tenant data (US1 scenarios 1 to 5) in `backend/test/integration/sign-in.spec.ts`; a session that expires while the user is on a page redirects to sign-in with no server-side state lost (Edge Case) [FR-001, FR-002, FR-004]; sign-out ends the session on the server, a reused session cookie is treated as signed out, and signing in again returns the same account (US1 scenario 6)
-- [ ] T039 [P] [US1] Integration test asserting no GitHub user token, client secret or session secret appears in any response body, header (other than the httpOnly cookie) or log line during sign-in (FR-034, SC-010) in `backend/test/integration/sign-in-secrets.spec.ts`
+- [X] T037 [P] [US1] Contract test for `/auth/github/login`, `/auth/github/callback`, `/auth/logout`, `/me` against `contracts/api.openapi.yaml` in `backend/test/contract/auth.contract.spec.ts` [FR-001, FR-004]
+- [X] T038 [P] [US1] Integration test: first sign-in creates one user; second reuses it; renamed login updates the same row; denied/cancelled sign-in creates nothing and returns the error redirect; unauthenticated requests get 401 with no tenant data (US1 scenarios 1 to 5) in `backend/test/integration/sign-in.spec.ts`; a session that expires while the user is on a page redirects to sign-in with no server-side state lost (Edge Case) [FR-001, FR-002, FR-004]; sign-out ends the session on the server, a reused session cookie is treated as signed out, and signing in again returns the same account (US1 scenario 6)
+- [X] T039 [P] [US1] Integration test asserting no GitHub user token, client secret or session secret appears in any response body, header (other than the httpOnly cookie) or log line during sign-in (FR-034, SC-010) in `backend/test/integration/sign-in-secrets.spec.ts`
 
 ### Implementation for User Story 1
 
-- [ ] T040 [US1] Implement the GitHub App user-authorization redirect with a single-use, session-bound `state` (random, expires in 10 minutes, stored in Redis) in `backend/src/auth/github-login.controller.ts` [FR-001]
-- [ ] T041 [US1] Implement the callback: exchange the code, read the GitHub user's numeric ID and profile, upsert `users` by `github_user_id`, set `last_login_at`, create the session, then discard the user token, in `backend/src/auth/github-login.service.ts` [FR-001, FR-002, FR-003]
-- [ ] T042 [US1] Implement `GET /me`, `POST /auth/logout` (revoke session server-side) in `backend/src/auth/me.controller.ts` [FR-004]
-- [ ] T043 [P] [US1] Build the sign-in page and denied-sign-in message in `frontend/src/app/(public)/sign-in/page.tsx`; the cancelled-sign-in message offers a way to try again (US1 scenario 4)
-- [ ] T044 [P] [US1] Build the authenticated layout with redirect-to-sign-in for unauthenticated visitors in `frontend/src/app/(app)/layout.tsx` [FR-004]
+- [X] T040 [US1] Implement the GitHub App user-authorization redirect with a single-use, session-bound `state` (random, expires in 10 minutes, stored in Redis) in `backend/src/auth/github-login.controller.ts` [FR-001]
+- [X] T041 [US1] Implement the callback: exchange the code, read the GitHub user's numeric ID and profile, upsert `users` by `github_user_id`, set `last_login_at`, create the session, then discard the user token, in `backend/src/auth/github-login.service.ts` [FR-001, FR-002, FR-003]
+- [X] T042 [US1] Implement `GET /me`, `POST /auth/logout` (revoke session server-side) in `backend/src/auth/me.controller.ts` [FR-004]
+- [X] T043 [P] [US1] Build the sign-in page and denied-sign-in message in `frontend/src/app/(public)/sign-in/page.tsx`; the cancelled-sign-in message offers a way to try again (US1 scenario 4)
+- [X] T044 [P] [US1] Build the authenticated layout with redirect-to-sign-in for unauthenticated visitors in `frontend/src/app/(app)/layout.tsx` [FR-004]
 
 **Checkpoint**: Sign-in works end to end and is independently testable.
 

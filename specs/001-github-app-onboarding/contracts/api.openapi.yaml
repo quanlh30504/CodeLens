@@ -244,11 +244,14 @@ components:
         message: { type: string }
     Me:
       type: object
-      required: [id, login, organizations]
+      required: [id, login, csrfToken, organizations]
       properties:
         id: { type: string, format: uuid }
         login: { type: string }
         avatarUrl: { type: string, nullable: true }
+        csrfToken:
+          type: string
+          description: Per-session token to send as X-CSRF-Token on state-changing requests
         organizations:
           type: array
           items:
