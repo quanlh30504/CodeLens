@@ -117,15 +117,22 @@ test('an owner enables and disables a repository without uninstalling the app', 
 
   const row = page.getByRole('row', { name: /acme\/repo-1/ });
   await expect(row.getByRole('button', { name: 'Enable CodeLens' })).toBeEnabled();
+  // The new state shows at once (optimistic); wait for the server's answer before checking it stuck.
+  const saved = page.waitForResponse((r) => r.url().includes('/review-enabled') && r.request().method() === 'PUT');
   await row.getByRole('button', { name: 'Enable CodeLens' }).click();
   await expect(row.getByText('Enabled')).toBeVisible();
+  expect((await saved).status()).toBe(200);
   await expect(row.getByRole('button', { name: 'Disable CodeLens' })).toBeVisible();
 
   await page.reload();
   await expect(page.getByRole('row', { name: /acme\/repo-1/ }).getByText('Enabled')).toBeVisible();
   await expect(page.getByRole('row', { name: /acme\/repo-2/ }).getByText('Disabled')).toBeVisible();
 
+  const disabled = page.waitForResponse((r) => r.url().includes('/review-enabled') && r.request().method() === 'PUT');
   await page.getByRole('row', { name: /acme\/repo-1/ }).getByRole('button', { name: 'Disable CodeLens' }).click();
+  expect((await disabled).status()).toBe(200);
+  await expect(page.getByRole('row', { name: /acme\/repo-1/ }).getByText('Disabled')).toBeVisible();
+  await page.reload();
   await expect(page.getByRole('row', { name: /acme\/repo-1/ }).getByText('Disabled')).toBeVisible();
 });
 
@@ -161,6 +168,45 @@ test('uninstalling on GitHub shows the installation as removed and every reposit
     if (text.includes('acme/repo')) expect(text).toContain('No longer accessible');
   }
   await expect(page.getByRole('button', { name: /Enable CodeLens|Disable CodeLens/ })).toHaveCount(0);
+});
+
+test('a slow first import shows "Setting up", then "taking longer than expected" after two minutes (US2 scenario 5)', async ({ page }) => {
+  // A second installation whose repository import takes far longer than the page waits.
+  await control('/installation', {
+    id: 501,
+    account: { id: 2000, login: 'globex', type: 'Organization' },
+    selection: 'selected',
+    repos: repos(2).map((r) => ({ ...r, id: r.id + 500, owner: 'globex' })),
+    users: [10],
+  });
+  await control('/latency', { match: 'installation/repositories', ms: 300_000 });
+  await control('/browser', { userId: 10, pendingInstallationId: 501 });
+
+  await page.clock.install(); // the page's timers are advanced by hand, so two minutes take a moment
+  await signIn(page);
+  await page.getByRole('link', { name: 'Install CodeLens' }).click();
+  await expect(page).toHaveURL(/\/installations\/[0-9a-f-]{36}$/);
+  await expect(page.getByRole('heading', { name: 'globex' })).toBeVisible();
+  await expect(page.getByText('Setting up: repositories are being imported from GitHub.')).toBeVisible();
+
+  const advanceTwoMinutes = async () => {
+    for (let i = 0; i < 45; i += 1) {
+      await page.clock.runFor(3000);
+      await page.waitForTimeout(40);
+    }
+  };
+  await advanceTwoMinutes();
+  await expect(page.getByText('Setup is taking longer than expected.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Check again' })).toBeVisible();
+  // A member cannot retry the import; an owner can.
+  await expect(page.getByRole('button', { name: 'Retry synchronization' })).toHaveCount(0);
+
+  sql("UPDATE organization_members SET role = 'OWNER', role_verified_at = now() WHERE organization_id IN (SELECT id FROM organizations WHERE login = 'globex')");
+  await page.reload();
+  await advanceTwoMinutes();
+  await expect(page.getByText('Setup is taking longer than expected.')).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Retry synchronization' })).toBeVisible();
+  await control('/latency', { match: 'installation/repositories', ms: 0 });
 });
 
 test('a signature that does not match is refused and changes nothing', async () => {

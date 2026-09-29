@@ -111,7 +111,7 @@ export async function startStack(): Promise<Stack> {
 
     const keyFile = path.join(tmp, 'app-key.pem');
     const run = (name: string, command: string, args: string[], cwd: string, env: Record<string, string>) => {
-      const child = spawn(command, args, { cwd, env: { ...process.env, ...env }, stdio: 'ignore' });
+      const child = spawn(command, args, { cwd, env: { ...process.env, ...env }, stdio: process.env.E2E_DEBUG ? 'inherit' : 'ignore' });
       child.on('exit', (code) => {
         if (code && code !== 0 && code !== 143) console.error(`[e2e] ${name} exited with code ${code}`);
       });
@@ -142,7 +142,7 @@ export async function startStack(): Promise<Stack> {
       GITHUB_API_BASE_URL: fakeGithubUrl,
       GITHUB_WEB_BASE_URL: fakeGithubUrl,
       QUEUE_BACKOFF_MS: '100',
-      LOG_LEVEL: 'warn',
+      LOG_LEVEL: process.env.E2E_DEBUG ? 'info' : 'warn',
     };
     run('api', 'node', ['dist/main.js'], backend, { ...appEnv, PORT: String(apiPort) });
     run('worker', 'node', ['dist/worker.js'], backend, appEnv);

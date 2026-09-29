@@ -10,6 +10,7 @@ async function main(): Promise<void> {
   const port = Number(process.env.FAKE_GITHUB_PORT ?? 4010);
   const github = new FakeGithub();
   await github.start(port);
+  if (process.env.FAKE_GITHUB_PERMISSIONS) github.appPermissions = JSON.parse(process.env.FAKE_GITHUB_PERMISSIONS) as Record<string, string>;
   const keyPath = process.env.FAKE_GITHUB_KEY_FILE;
   if (keyPath) {
     const { writeFileSync } = await import('node:fs');
@@ -52,6 +53,9 @@ function startControl(github: FakeGithub, port: number): void {
           }
           case '/remove-installation':
             github.removeInstallation(Number(body.id));
+            return reply(200);
+          case '/latency':
+            github.latencies = [{ match: new RegExp(String(body.match)), ms: Number(body.ms) }];
             return reply(200);
           case '/browser':
             Object.assign(github.browser, body);

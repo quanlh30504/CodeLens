@@ -36,6 +36,41 @@ Run guide for proving the feature end to end. It contains no implementation code
 | Start the API with the fake GitHub reporting a write permission for the app | Startup refused with a log line naming the permission [SC-014] |
 | Sign out, then reuse the old session cookie | Treated as signed out [US1-6] |
 
+### Results of the last full run (T108)
+
+Run on 2026-09-30 on branch `001-github-app-onboarding`, against the fake GitHub only. Every command exited 0.
+
+| Suite | Result |
+|-------|--------|
+| `pnpm -r lint`, `pnpm -r build` | clean |
+| Backend unit | 61 passed |
+| Backend contract | 16 passed |
+| Backend integration (containers) | 27 suites, 177 passed, 3 to do |
+| Frontend unit | 23 passed |
+| Playwright journeys (Google Chrome, whole stack) | 7 passed, three runs in a row |
+
+The 3 "to do" tests and the notes below all wait for the GitHub role check (tasks T077 and T092, gate G1).
+
+| Scenario | Result | Where it is checked |
+|----------|--------|---------------------|
+| Sign in twice with a new user | Pass | `sign-in.spec.ts` |
+| Complete an installation with 3 repositories | Pass | `install-flow.spec.ts`, Playwright journey 1 (4 seconds start to finish) |
+| Bad or missing signature | Pass | `webhook-signature.spec.ts`, Playwright journey 7 |
+| Same fixture 10 times, some at once | Pass | `webhook-idempotency.spec.ts` |
+| Ten synchronizations without change | Pass | `repository-sync.spec.ts` |
+| Enable then disable; eligibility after disable | Pass | `enable-disable.spec.ts`, `review-eligibility.spec.ts`, Playwright journey 3 |
+| Repository removed, then sync | Pass | `lifecycle-repositories.spec.ts` |
+| `installation` `deleted` | Pass | `lifecycle-installation.spec.ts`, Playwright journey 5 |
+| Two organizations request each other's ids | Pass | `tenant-isolation.spec.ts` |
+| MEMBER calls enable or sync | Pass | `enable-disable.spec.ts`, `manual-sync.spec.ts`, `tenant-isolation.spec.ts` |
+| Secrets in responses, pages and logs | Pass | `secret-leak-scan.spec.ts`, Playwright journey 2 |
+| FR-040 permission matrix | Pass | `tenant-isolation.spec.ts` (all four kinds of caller) |
+| Transfer to another organization with CodeLens | Pass | `lifecycle-repositories.spec.ts` |
+| Slow first import: setting up, then "taking longer than expected" | Pass | Playwright journey 6 (time advanced by hand), owner sees "Retry synchronization", member does not |
+| Role confirmed more than 10 minutes ago | **Partial** | `403 REAUTH_REQUIRED` and the "Confirm with GitHub" prompt pass (`role-freshness.spec.ts`, Playwright journey 4). The step that asks GitHub again and then applies the change is task T092 (gate G1) |
+| API started with a write permission | Pass | `startup-refusal.spec.ts` starts the compiled API and worker: exit code 1, permission named |
+| Sign out, reuse the old cookie | Pass | `sign-in.spec.ts` |
+
 ## B. Manual validation against real GitHub (optional, staging)
 
 1. Register a GitHub App with only the read permissions this feature needs (repository metadata, plus the read-only membership permission confirmed in the T008 spike); and do not grant Pull requests or Issues write yet. Enable "Request user authorization (OAuth) during installation" and set the setup URL to `https://<host>/api/installations/callback`. Set the webhook URL to `https://<host>/api/webhooks/github` and choose a webhook secret.
